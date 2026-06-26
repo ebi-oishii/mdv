@@ -6,6 +6,8 @@
   import FullDiffView from "./diff/FullDiffView.svelte";
 
   let submode = $state<DiffSubmode>("highlight");
+  let base = $state("HEAD");
+  let baseInput = $state("HEAD");
   let hunks = $state<HunkSummary[]>([]);
   let lines = $state<DiffLine[]>([]);
   let error = $state<string | null>(null);
@@ -14,10 +16,10 @@
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {
-    // Track dependencies explicitly.
     void doc.path;
     void doc.text;
     void submode;
+    void base;
 
     if (!doc.path || !doc.gitAvailable) return;
     if (timer) clearTimeout(timer);
@@ -33,9 +35,9 @@
     error = null;
     try {
       if (submode === "highlight") {
-        hunks = await gitHunks(doc.path, doc.text);
+        hunks = await gitHunks(doc.path, doc.text, base);
       } else {
-        lines = await gitFullDiff(doc.path, doc.text);
+        lines = await gitFullDiff(doc.path, doc.text, base);
       }
     } catch (e) {
       error = String(e);
@@ -44,40 +46,58 @@
     }
   }
 
+  function applyBase(e: SubmitEvent) {
+    e.preventDefault();
+    base = baseInput.trim() || "HEAD";
+  }
+
   const addedCount = $derived(
     hunks.reduce(
-      (n, h) => n + (h.kind === "added" || h.kind === "modified" ? h.end_line - h.start_line + 1 : 0),
+      (n, h) =>
+        n + (h.kind === "added" || h.kind === "modified" ? h.end_line - h.start_line + 1 : 0),
       0,
     ),
   );
-  const removedCount = $derived(
-    hunks.reduce((n, h) => n + h.removed_count, 0),
-  );
+  const removedCount = $derived(hunks.reduce((n, h) => n + h.removed_count, 0));
 </script>
 
 <div class="diff-view">
   <div class="submode-bar">
-    <div class="submode-toggle" role="tablist">
-      <button
-        role="tab"
-        aria-selected={submode === "highlight"}
-        class:active={submode === "highlight"}
-        onclick={() => (submode = "highlight")}
-      >
-        Highlight Only
-      </button>
-      <button
-        role="tab"
-        aria-selected={submode === "full"}
-        class:active={submode === "full"}
-        onclick={() => (submode = "full")}
-      >
-        Full
-      </button>
+    <div class="left">
+      <div class="submode-toggle" role="tablist">
+        <button
+          role="tab"
+          aria-selected={submode === "highlight"}
+          class:active={submode === "highlight"}
+          onclick={() => (submode = "highlight")}
+        >
+          Highlight Only
+        </button>
+        <button
+          role="tab"
+          aria-selected={submode === "full"}
+          class:active={submode === "full"}
+          onclick={() => (submode = "full")}
+        >
+          Full
+        </button>
+      </div>
+      <form class="base-form" onsubmit={applyBase}>
+        <span class="prefix">vs</span>
+        <input
+          type="text"
+          bind:value={baseInput}
+          spellcheck="false"
+          autocomplete="off"
+          placeholder="HEAD"
+          aria-label="Compare base revision"
+        />
+        <button type="submit" disabled={baseInput === base}>Apply</button>
+      </form>
     </div>
     <div class="meta">
       {#if loading}<span class="loading">…</span>{/if}
-      {#if submode === "highlight" && !loading}
+      {#if submode === "highlight" && !loading && !error}
         <span class="added">+{addedCount}</span>
         <span class="removed">−{removedCount}</span>
       {/if}
@@ -108,10 +128,18 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.4rem 1rem;
-    border-bottom: 1px solid light-dark(#eee, #2a2a2a);
-    background: light-dark(#fafafa, #1e1e1e);
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid light-dark(#ddd, #333);
+    background: light-dark(#fafafa, #222);
     flex-shrink: 0;
+    font-size: 0.85rem;
+  }
+  .left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
   }
   .submode-toggle {
     display: inline-flex;
@@ -124,7 +152,6 @@
     border: 0;
     padding: 0.25rem 0.7rem;
     font: inherit;
-    font-size: 0.85rem;
     color: light-dark(#444, #ccc);
     cursor: pointer;
   }
@@ -135,10 +162,44 @@
     background: light-dark(#e3eaf5, #2b3a55);
     color: light-dark(#16325c, #b9d0ff);
   }
+  .base-form {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: light-dark(#666, #999);
+  }
+  .base-form .prefix {
+    user-select: none;
+  }
+  .base-form input {
+    width: 9em;
+    padding: 0.2rem 0.5rem;
+    font: inherit;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    background: light-dark(#fff, #1a1a1a);
+    color: inherit;
+    border: 1px solid light-dark(#ccc, #444);
+    border-radius: 4px;
+  }
+  .base-form button {
+    background: transparent;
+    border: 1px solid light-dark(#ccc, #444);
+    border-radius: 4px;
+    padding: 0.2rem 0.6rem;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  .base-form button:hover:not(:disabled) {
+    background: light-dark(#eee, #2a2a2a);
+  }
+  .base-form button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
   .meta {
     display: flex;
     gap: 0.6rem;
-    font-size: 0.85rem;
     font-family: ui-monospace, monospace;
   }
   .added {

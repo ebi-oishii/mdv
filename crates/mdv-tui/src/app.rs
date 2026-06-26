@@ -50,6 +50,7 @@ pub struct App {
     pub diff: DiffView,
     pub read_only: bool,
     pub git_available: bool,
+    pub diff_base: String,
     pub saved_text: String,
     pub status: Option<String>,
 }
@@ -61,6 +62,7 @@ impl App {
         mode: Mode,
         read_only: bool,
         git_available: bool,
+        diff_base: String,
     ) -> Self {
         Self {
             mode: if mode == Mode::Diff && !git_available {
@@ -74,6 +76,7 @@ impl App {
             diff: DiffView::new(),
             read_only,
             git_available,
+            diff_base,
             saved_text: initial_text,
             status: None,
         }
@@ -205,15 +208,17 @@ impl App {
         let text = self.source.text();
         match self.diff.submode {
             Submode::Highlight => {
-                match mdv_core::git::diff_text_against_head(path, &text) {
+                match mdv_core::git::diff_text_against_base(path, &text, &self.diff_base) {
                     Ok(hunks) => self.diff.render_highlight(frame, area, &text, &hunks),
                     Err(e) => self.diff.render_message(frame, area, &e.to_string()),
                 }
             }
-            Submode::Full => match mdv_core::git::full_diff_against_head(path, &text) {
-                Ok(lines) => self.diff.render_full(frame, area, &lines),
-                Err(e) => self.diff.render_message(frame, area, &e.to_string()),
-            },
+            Submode::Full => {
+                match mdv_core::git::full_diff_against_base(path, &text, &self.diff_base) {
+                    Ok(lines) => self.diff.render_full(frame, area, &lines),
+                    Err(e) => self.diff.render_message(frame, area, &e.to_string()),
+                }
+            }
         }
     }
 
@@ -245,8 +250,9 @@ impl App {
                 self.mode.label(),
             ),
             (None, Mode::Diff) => format!(
-                " [Diff · {}]   j/k scroll  Tab/^D submode  ^E mode  q quit",
+                " [Diff · {}]  vs {}   j/k scroll  Tab/^D submode  ^E mode  q quit",
                 self.diff.submode.label(),
+                self.diff_base,
             ),
         };
         frame.render_widget(

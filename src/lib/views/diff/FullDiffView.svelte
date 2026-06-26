@@ -44,7 +44,7 @@
   }
   .diff {
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.5;
     padding-bottom: 4rem;
   }

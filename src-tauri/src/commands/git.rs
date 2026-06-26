@@ -1,6 +1,12 @@
 use std::path::PathBuf;
 
 use mdv_core::diff::{DiffLine, HunkSummary};
+use mdv_core::git::DEFAULT_BASE;
+
+fn resolve(base: Option<String>) -> String {
+    base.filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_BASE.to_string())
+}
 
 #[tauri::command]
 pub async fn git_is_repo(path: PathBuf) -> Result<bool, String> {
@@ -8,14 +14,21 @@ pub async fn git_is_repo(path: PathBuf) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn git_hunks(path: PathBuf, current_text: String) -> Result<Vec<HunkSummary>, String> {
-    mdv_core::git::diff_text_against_head(&path, &current_text).map_err(|e| e.to_string())
+pub async fn git_hunks(
+    path: PathBuf,
+    current_text: String,
+    base: Option<String>,
+) -> Result<Vec<HunkSummary>, String> {
+    let base = resolve(base);
+    mdv_core::git::diff_text_against_base(&path, &current_text, &base).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn git_full_diff(
     path: PathBuf,
     current_text: String,
+    base: Option<String>,
 ) -> Result<Vec<DiffLine>, String> {
-    mdv_core::git::full_diff_against_head(&path, &current_text).map_err(|e| e.to_string())
+    let base = resolve(base);
+    mdv_core::git::full_diff_against_base(&path, &current_text, &base).map_err(|e| e.to_string())
 }

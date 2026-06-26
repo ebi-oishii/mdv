@@ -1,13 +1,17 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
 use crate::diff::{full_diff, line_diff, DiffLine, HunkSummary};
 
+pub const DEFAULT_BASE: &str = "HEAD";
+
 #[derive(Debug, Error)]
 pub enum GitError {
     #[error("not in a git repository")]
     NotARepo,
+    #[error("unknown revision: {0}")]
+    UnknownRevision(String),
     #[error("git operation failed: {0}")]
     Git(#[from] git2::Error),
     #[error("io error: {0}")]
@@ -19,39 +23,54 @@ pub enum GitError {
 }
 
 pub fn is_in_repo(file: &Path) -> bool {
-    git2::Repository::discover(file).is_ok()
+    let abs = canonicalize_lossy(file);
+    git2::Repository::discover(&abs).is_ok()
 }
 
 pub fn diff_against_head(file: &Path) -> Result<Vec<HunkSummary>, GitError> {
     let current = std::fs::read_to_string(file)?;
-    diff_text_against_head(file, &current)
+    diff_text_against_base(file, &current, DEFAULT_BASE)
 }
 
-pub fn diff_text_against_head(file: &Path, current: &str) -> Result<Vec<HunkSummary>, GitError> {
-    let head = head_text_for(file)?;
-    Ok(line_diff(&head, current))
+pub fn diff_text_against_base(
+    file: &Path,
+    current: &str,
+    base: &str,
+) -> Result<Vec<HunkSummary>, GitError> {
+    let old = base_text_for(file, base)?;
+    Ok(line_diff(&old, current))
 }
 
-pub fn full_diff_against_head(file: &Path, current: &str) -> Result<Vec<DiffLine>, GitError> {
-    let head = head_text_for(file)?;
-    Ok(full_diff(&head, current))
+pub fn full_diff_against_base(
+    file: &Path,
+    current: &str,
+    base: &str,
+) -> Result<Vec<DiffLine>, GitError> {
+    let old = base_text_for(file, base)?;
+    Ok(full_diff(&old, current))
 }
 
-fn head_text_for(file: &Path) -> Result<String, GitError> {
-    let repo = git2::Repository::discover(file).map_err(|_| GitError::NotARepo)?;
+fn base_text_for(file: &Path, base: &str) -> Result<String, GitError> {
+    let file_abs = canonicalize_lossy(file);
+    let repo = git2::Repository::discover(&file_abs).map_err(|_| GitError::NotARepo)?;
     let workdir = repo.workdir().ok_or(GitError::NotARepo)?;
-    let rel = file
-        .strip_prefix(workdir)
+    let workdir_abs = canonicalize_lossy(workdir);
+    let rel = file_abs
+        .strip_prefix(&workdir_abs)
         .map_err(|_| GitError::OutsideRepo)?;
-    read_head_blob(&repo, rel)
+    read_revision_blob(&repo, rel, base)
 }
 
-fn read_head_blob(repo: &git2::Repository, rel: &Path) -> Result<String, GitError> {
-    let head = match repo.head() {
-        Ok(h) => h.peel_to_tree()?,
-        Err(_) => return Ok(String::new()),
-    };
-    let entry = match head.get_path(rel) {
+fn read_revision_blob(
+    repo: &git2::Repository,
+    rel: &Path,
+    revspec: &str,
+) -> Result<String, GitError> {
+    let obj = repo
+        .revparse_single(revspec)
+        .map_err(|_| GitError::UnknownRevision(revspec.to_string()))?;
+    let tree = obj.peel_to_tree()?;
+    let entry = match tree.get_path(rel) {
         Ok(e) => e,
         Err(_) => return Ok(String::new()),
     };
@@ -59,4 +78,8 @@ fn read_head_blob(repo: &git2::Repository, rel: &Path) -> Result<String, GitErro
     std::str::from_utf8(blob.content())
         .map(|s| s.to_string())
         .map_err(|_| GitError::NotUtf8)
+}
+
+fn canonicalize_lossy(p: &Path) -> PathBuf {
+    p.canonicalize().unwrap_or_else(|_| p.to_path_buf())
 }

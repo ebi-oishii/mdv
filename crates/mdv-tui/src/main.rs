@@ -27,6 +27,9 @@ struct Args {
     /// Open as read-only.
     #[arg(long)]
     read_only: bool,
+    /// Git revision to compare against in Diff mode (e.g. HEAD, HEAD~1, main, <sha>).
+    #[arg(long, default_value = "HEAD")]
+    diff_base: String,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -52,7 +55,9 @@ fn main() -> Result<()> {
     let (initial_text, path) = match &args.file {
         Some(p) => {
             let text = mdv_core::fs::read_text_file(p)?;
-            (text, Some(p.clone()))
+            // Canonicalize so git2 can correctly relate this path to the discovered repo workdir.
+            let abs = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+            (text, Some(abs))
         }
         None => (String::new(), None),
     };
@@ -68,6 +73,7 @@ fn main() -> Result<()> {
         args.mode.into(),
         args.read_only,
         git_available,
+        args.diff_base,
     );
 
     enable_raw_mode()?;

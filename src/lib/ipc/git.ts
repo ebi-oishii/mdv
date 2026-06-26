@@ -8,13 +8,15 @@ export async function gitIsRepo(path: string): Promise<boolean> {
 export async function gitHunks(
   path: string,
   currentText: string,
+  base?: string,
 ): Promise<HunkSummary[]> {
-  return await invoke<HunkSummary[]>("git_hunks", { path, currentText });
+  return await invoke<HunkSummary[]>("git_hunks", { path, currentText, base });
 }
 
 export async function gitFullDiff(
   path: string,
   currentText: string,
+  base?: string,
 ): Promise<DiffLine[]> {
-  return await invoke<DiffLine[]>("git_full_diff", { path, currentText });
+  return await invoke<DiffLine[]>("git_full_diff", { path, currentText, base });
 }

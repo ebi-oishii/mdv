@@ -47,8 +47,8 @@
   }
   .hl {
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 13px;
-    line-height: 1.55;
+    font-size: 14px;
+    line-height: 1.5;
     padding: 0.5rem 0 4rem;
   }
   .line {
