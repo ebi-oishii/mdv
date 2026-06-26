@@ -4,31 +4,45 @@
 
 ### 目的
 - Markdown を **見る** ことも **書く** こともできる、軽量なクロスプラットフォームアプリ
+- GUI（デスクトップ / モバイル）と **TUI（端末）の両方** を一級の表示手段として提供
 - Git 管理下のファイルでは、編集中のファイルの差分が一目でわかる
-- モバイルでも快適に動作する
 
 ### 非目標（少なくとも v1 では扱わない）
 - マルチカーソル、Vim/Emacs キーバインドの完全再現
 - リアルタイム共同編集
 - クラウド同期（端末内 + 既存 Git リポジトリへの依存のみ）
 - プラグインシステム
+- TUI モードでの WYSIWYG 編集（端末では表現困難なため）
 
 ---
 
 ## 2. アーキテクチャ概要
 
+Cargo ワークスペースで Rust コードを 3 つの crate に分割し、GUI と TUI 双方から共通ロジックを呼ぶ。
+
 ```
+┌────────────────────────────────────────────────────────────────────┐
+│  mdv-core (Rust library, no UI deps)                                │
+│  - File I/O 抽象                                                     │
+│  - Git diff (git2 + similar)                                        │
+│  - Markdown 解析（pulldown-cmark, AST レベルの操作が必要な場合）       │
+│  - 型: DocState, HunkSummary, GitContext                            │
+└────────────────────────────────────────────────────────────────────┘
+            ▲                                          ▲
+            │ depends on                               │ depends on
+            │                                          │
+┌──────────────────────────────┐    ┌──────────────────────────────┐
+│  mdv-gui (= src-tauri/)       │    │  mdv-tui                      │
+│  Tauri 2 シェル                │    │  ratatui + crossterm          │
+│  - IPC commands               │    │  - 直接ターミナル描画           │
+│  - WebView (SvelteKit SPA)    │    │  - キーボード操作               │
+│    が UI を担う                │    │  - mdv-core を直呼びする        │
+└──────────────────────────────┘    └──────────────────────────────┘
+            │
+            │ IPC commands / events
+            ▼
 ┌──────────────────────────────────────────────────┐
-│  Tauri 2 シェル（Rust）                            │
-│  - ファイル I/O（tauri-plugin-fs）                  │
-│  - Git 操作（git2 crate）                          │
-│  - 差分計算（similar crate）                        │
-│  - ネイティブメニュー、ファイルダイアログ            │
-└──────────────────────────────────────────────────┘
-                    │  IPC commands / events
-                    ▼
-┌──────────────────────────────────────────────────┐
-│  WebView（SvelteKit static / Svelte 5 SPA）        │
+│  WebView（SvelteKit + adapter-static, SPA）         │
 │                                                    │
 │  ┌────────────────────────────────────────────┐  │
 │  │ ModeBar: [Source][Preview][WYSIWYG][Diff]  │  │
@@ -42,7 +56,7 @@
 │  │  - DiffView     (CM6 + decorations)         │  │
 │  └────────────────────────────────────────────┘  │
 │  ┌────────────────────────────────────────────┐  │
-│  │ DocStore (Svelte store: 単一情報源)          │  │
+│  │ DocStore (Svelte runes: 単一情報源)          │  │
 │  │  - text: string                              │  │
 │  │  - path: string | null                       │  │
 │  │  - dirty: boolean                            │  │
@@ -52,11 +66,13 @@
 ```
 
 ### 単一情報源の原則
-編集中のテキストは **DocStore.text** が唯一の真実。各 View はそこから派生する。
+編集中のテキストは GUI 側は `DocStore.text`、TUI 側は `mdv_tui::AppState.text` が真実。
+両者とも背後の **mdv-core** が提供する `DocState` 型を保持し、Markdown パース・差分計算結果・Git コンテキストは crate 共通の型で表現される。
 
+GUI 側の View 同期：
 - SourceView は CodeMirror の状態と DocStore.text を双方向バインド
 - PreviewView は DocStore.text から HTML を派生（読み取り専用）
-- WysiwygView（Phase 2）は ProseMirror 文書と DocStore.text の同期を Milkdown が担う
+- WysiwygView（Phase 3）は ProseMirror 文書と DocStore.text の同期を Milkdown が担う
 
 これにより「ボタンで切り替え」がただの View 切り替えになり、モード切替時のロストを防ぐ。
 
@@ -74,13 +90,14 @@
 - DOMPurify でサニタイズ（任意の HTML 埋め込みに備える）
 - スクロール位置を Source モードと共有（ヒューリスティック: 行ベース）
 
-### WYSIWYG モード（Phase 2）
+### WYSIWYG モード（GUI のみ、Phase 3）
 - Milkdown（ProseMirror ベース）
 - 内部 AST → markdown シリアライズで DocStore.text を更新
 - 表記揺れ（`*foo*` vs `_foo_`）は正規化される旨を UI で明示
+- TUI 非対応（端末では表現困難）
 
 ### Diff モード（2 サブモード）
-本アプリの特色。Git 管理下のファイルを開いたときのみ有効。
+本アプリの特色。Git 管理下のファイルを開いたときのみ有効。GUI / TUI 両対応。
 
 | サブモード | 内容 | 用途 |
 |---|---|---|
@@ -92,14 +109,83 @@
 - 設定で `インデックス（ステージ済み）` / `作業ツリー全体` を切替可能（Phase 2）
 
 差分計算：
-- Rust 側で `similar` crate を使い行ベース diff
-- 結果は `HunkSummary { startLine, endLine, kind: "added"|"removed"|"modified" }` のリストとして IPC で渡す
-- Highlight Only はこれをそのまま CodeMirror デコレーションに変換
-- Full は同じデータから 2 カラムレイアウトを Svelte で組み立て
+- `mdv-core` で `similar` crate を使い行ベース diff、`git2` で HEAD ツリーを取得
+- 結果は `HunkSummary { start_line, end_line, kind }` のリスト
+- GUI: IPC で渡し、Highlight Only は CodeMirror デコレーション、Full は Svelte 側で 2 カラム描画
+- TUI: 同じ型を ratatui で描画
 
 ---
 
-## 4. レスポンシブ / モバイル対応
+## 4. TUI モード
+
+### コマンド体系
+
+| コマンド | 挙動 |
+|---|---|
+| `mdv` | GUI 起動（ファイル未指定） |
+| `mdv path/to/file.md` | GUI でそのファイルを開く |
+| `mdv-tui` | TUI 起動、カレントディレクトリのファイル選択 |
+| `mdv-tui path/to/file.md` | TUI でそのファイルを開く |
+| `mdv-tui --mode preview file.md` | 初期モードを指定（source / preview / diff） |
+| `mdv-tui --read-only file.md` | 読み取り専用 |
+| `mdv-tui --diff-base HEAD~1 file.md` | 差分基準を指定 |
+
+### TUI レイアウト
+
+```
+┌─ mdv-tui  README.md  [modified]  ─────────────────────────────┐
+│ Mode: [Source] Preview Diff(Full|Highlight)         q: quit   │
+├───────────────────────────────────────────────────────────────┤
+│  1 │ # Title                                                  │
+│  2 │                                                          │
+│  3 │ Some text                                                │
+│ ●4 │ Edited line                                              │   ← Highlight Only: 行番号脇の色帯
+│  5 │ More text                                                │
+│                                                                │
+└─ INSERT │ Ln 4, Col 12 │ branch: main │ +12 -3 ───────────────┘
+```
+
+- フッターにステータス（モード, カーソル位置, Git ブランチ, 差分数）
+- ヘッダーに ModeBar + ファイル名 + ヘルプ短縮表示
+
+### キーバインド（初期案）
+
+| キー | 動作 |
+|---|---|
+| `Tab` | 次のモードに切替 |
+| `Shift+Tab` | 前のモードに切替 |
+| `Ctrl+S` | 保存 |
+| `Ctrl+O` | ファイルを開く |
+| `Ctrl+Q` / `q`（コマンドモード時） | 終了 |
+| `Ctrl+D` | Diff サブモード切替（Full ↔ Highlight Only） |
+| `:` | コマンドプロンプト（vim 風、`:w`, `:q`, `:e file` など最小限） |
+
+Source モードでは挿入モード（テキスト入力）が基本、`Esc` でコマンドモード。
+Vim 完全互換は非目標、視覚的な操作感の借用に留める。
+
+### TUI ライブラリ
+
+| 役割 | crate |
+|---|---|
+| メインフレーム | **ratatui** 0.29+ |
+| 端末バックエンド | **crossterm** 0.28+ |
+| Source モード編集 | **edtui** または最小自作（要評価） |
+| Markdown → ANSI 描画 | **termimad** または `pulldown-cmark` から自前変換 |
+| 引数解析 | **clap** v4 (derive macro) |
+
+### TUI 性能目標
+
+| 指標 | 目標 |
+|---|---|
+| 起動時間（ファイル指定あり） | < 100ms |
+| バイナリサイズ（リリース） | < 5MB（strip & lto 後） |
+| アイドル時 CPU | 実質ゼロ（イベントドリブン） |
+
+GUI に比べて非常に軽い起動が可能なので、`grep -l "TODO" *.md | xargs mdv-tui` のような使い方が現実的。
+
+---
+
+## 5. レスポンシブ / モバイル対応
 
 | 画面幅 | レイアウト |
 |---|---|
@@ -110,11 +196,12 @@
 モバイル固有の留意点：
 - IME（日本語入力）と CodeMirror の相性は実機検証必須
 - ファイル選択は OS のドキュメントプロバイダ経由（Tauri mobile の plugin-fs）
-- Git 操作はモバイルでは **読み取り（差分表示）のみ** を v1 のスコープに。コミット等は Phase 3
+- Git 操作はモバイルでは **読み取り（差分表示）のみ** を v1 のスコープに。コミット等は将来
+- mdv-tui バイナリはモバイルでは配布しない（端末という前提が成り立たないため）
 
 ---
 
-## 5. パフォーマンス指標（目安）
+## 6. パフォーマンス指標（目安）
 
 | 指標 | 目標 |
 |---|---|
@@ -131,25 +218,45 @@
 
 ---
 
-## 6. ファイル / モジュール構成（予定）
+## 7. ファイル / モジュール構成（予定）
+
+Cargo ワークスペースとして Rust コードを 3 crate に分割。Tauri 既存の `src-tauri/` は名前を保ったままワークスペースの 1 メンバとする（Tauri ツーリングの慣習を壊さないため）。
 
 ```
 mdv/
-├── src-tauri/                     # Rust 側
+├── Cargo.toml                     # ワークスペースルート
+├── src-tauri/                     # ワークスペースメンバ（= mdv-gui）
+│   ├── Cargo.toml                 # name = "mdv"
 │   ├── src/
 │   │   ├── main.rs
-│   │   ├── commands/
-│   │   │   ├── fs.rs              # 読み書き
-│   │   │   └── git.rs             # diff / status
-│   │   └── diff.rs                # similar crate ラッパ
-│   └── Cargo.toml
-├── src/                           # Svelte 5
+│   │   ├── lib.rs
+│   │   └── commands/              # IPC ハンドラ
+│   │       ├── fs.rs
+│   │       └── git.rs
+│   ├── capabilities/
+│   └── tauri.conf.json
+├── crates/
+│   ├── mdv-core/                  # UI 非依存の純粋ロジック
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── doc.rs             # DocState 型
+│   │       ├── diff.rs            # similar + HunkSummary
+│   │       └── git.rs             # git2 ラッパ
+│   └── mdv-tui/                   # TUI バイナリ
+│       ├── Cargo.toml             # name = "mdv-tui"
+│       └── src/
+│           ├── main.rs            # clap で引数解析
+│           ├── app.rs             # AppState, イベントループ
+│           ├── views/             # source / preview / diff
+│           └── input.rs           # キーバインド
+├── src/                           # Svelte 5 (SvelteKit)
 │   ├── lib/
 │   │   ├── stores/doc.svelte.ts   # DocStore
 │   │   ├── views/
 │   │   │   ├── SourceView.svelte
 │   │   │   ├── PreviewView.svelte
-│   │   │   ├── WysiwygView.svelte (Phase 2)
+│   │   │   ├── WysiwygView.svelte (Phase 3)
 │   │   │   └── DiffView.svelte
 │   │   ├── components/
 │   │   │   ├── ModeBar.svelte
@@ -160,13 +267,20 @@ mdv/
 └── package.json
 ```
 
+ワークスペース化の利点：
+- `mdv-core` を共通の型・ロジックの単一情報源にできる
+- `cargo build -p mdv-tui --release` で TUI だけ単独配布可能（cargo install / Homebrew formula）
+- CI で個別にテスト・ビルド可
+
 ---
 
-## 7. リスクと対策
+## 8. リスクと対策
 
 | リスク | 対策 |
 |---|---|
-| Milkdown の round-trip で MD が変質する | Phase 2 開始時に主要ケース（CJK、リスト、コードブロック）の保存検証を行う |
+| Milkdown の round-trip で MD が変質する | Phase 3 開始時に主要ケース（CJK、リスト、コードブロック）の保存検証を行う |
 | Tauri mobile が Beta から Stable に上がるまでは不安定 | Desktop を先に Stable リリース、Mobile は別ブランチで追従 |
 | CodeMirror 6 + 日本語 IME の挙動 | 初期段階でモバイル含め実機テスト |
 | 大きな Git リポジトリでの diff 計算が遅い | git2 のフックを使い変更ファイルのみ対象に絞る |
+| TUI 編集ウィジェット（edtui 等）の日本語幅計算が壊れがち | 早期に CJK + 絵文字テストを書き、必要なら自作にフォールバック |
+| GUI と TUI で挙動・キーバインドの一貫性を保つコスト | `mdv-core` を介し共通ロジックは 100% 共有、UI 固有はモード単位で実装方針を別途定める |

@@ -45,7 +45,7 @@
   - Monaco: 大きすぎる（数 MB）、デスクトップ前提のスタイル
   - 自前: スクロール、検索、折りたたみを再発明することになる
 
-## ADR-004: WYSIWYG は Milkdown（Phase 2）
+## ADR-004: WYSIWYG は Milkdown（Phase 3）
 
 - **採用**: Milkdown（ProseMirror ベース、MD 双方向特化）
 - **比較**: TipTap + markdown 拡張 / Lexical / 自前
@@ -90,7 +90,51 @@
   - ハンク単位の API が整っている
 - **備考**: Highlight Only モードは「変更があった行範囲」のみ送れば十分なので、ハンクから `[startLine, endLine]` を抽出してフロントへ。
 
-## ADR-008: スタイルは Tailwind ではなく素の CSS + CSS 変数
+## ADR-008: TUI ライブラリは ratatui + crossterm
+
+- **採用**:
+  - メインフレーム: `ratatui` 0.29+
+  - 端末バックエンド: `crossterm` 0.28+
+  - 引数解析: `clap` v4 (derive)
+- **比較**: cursive / Tauri TUI 拡張 / 自作
+- **決め手**:
+  - ratatui は Rust TUI のデファクト。広く採用され、ウィジェット・レイアウト DSL が成熟
+  - immediate-mode 描画で AppState を 1 つ持てば良く、`mdv-core` の DocState と素直に結合できる
+  - crossterm は Windows 含めて移植性◎、Tauri デスクトップが対応する全 OS で同じ挙動
+- **代償**:
+  - 編集ウィジェットは ratatui 純正には存在しない → `edtui` などサードパーティに依存、または自作
+  - 日本語幅計算（東アジア全角・絵文字）は Rust エコシステム全体で罠が多く、テストでカバー必須
+- **却下理由**:
+  - cursive: 高レベルだが ratatui ほど活発でない。今回はカスタム描画（Highlight Only の色帯など）を多用するため低レベル制御が欲しい
+
+## ADR-009: Rust コードは Cargo ワークスペース化し 3 crate に分割
+
+- **採用**: ワークスペース構成
+  - `src-tauri/` (member, package name = `mdv`) — Tauri GUI 用バイナリ
+  - `crates/mdv-tui/` (package name = `mdv-tui`) — TUI バイナリ
+  - `crates/mdv-core/` (package name = `mdv-core`) — UI 非依存の純粋ロジック
+- **比較**: GUI と TUI を単一バイナリ + `--tui` フラグ / 別リポジトリ / GUI 内部に TUI モジュールを直書き
+- **決め手**:
+  - GUI と TUI は **UI レイヤーが完全に別** で共有意義が薄い一方、**MD パース・差分・Git** は完全に共通 → core 分離が自然
+  - 別バイナリにすることで TUI を `cargo install mdv-tui` や Homebrew で単独配布できる（サーバ用途）
+  - Tauri 既存の `src-tauri/` ディレクトリ名はツーリングの慣習なのでそのまま残し、ワークスペースの 1 メンバとして扱う
+- **代償**:
+  - ワークスペースルートに別途 `Cargo.toml` が必要
+  - `mdv-core` の API 変更時に両 binary を更新する必要
+- **却下理由**:
+  - 単一バイナリ + フラグ: Tauri ランタイムを含むため TUI 用途でも数 MB のサイズ増。`tauri::Builder` を起動しない分岐パスの保守も面倒
+  - 別リポジトリ: 共有コードを crate として公開する手間が割に合わない（個人プロジェクト規模）
+
+## ADR-010: TUI の起動はデフォルトでフル機能、`--read-only` で読み取り専用
+
+- **採用**: `mdv-tui file.md` は **編集モード** で起動。読み取り専用は `--read-only` で明示
+- **比較**: 逆（デフォルト読み取り、`--edit` で編集）
+- **決め手**:
+  - GUI と TUI で挙動を揃える方が原則。GUI は常に編集可能
+  - "less 代替" としての需要には `--read-only` で応えられる
+- **代償**: 誤って書き換える事故の可能性は残る → 保存時は明示的に `Ctrl+S` か `:w` が必要なため実害は小さい
+
+## ADR-011: スタイルは Tailwind ではなく素の CSS + CSS 変数
 
 - **採用**: 素の CSS（コンポーネントスコープ） + CSS カスタムプロパティでテーマ
 - **比較**: Tailwind / UnoCSS
