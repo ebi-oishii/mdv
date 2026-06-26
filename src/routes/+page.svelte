@@ -1,9 +1,11 @@
 <script lang="ts">
   import { doc } from "$lib/stores/doc.svelte";
   import { pickAndReadFile, pickAndWriteFile, writeFile } from "$lib/ipc/fs";
+  import { gitIsRepo } from "$lib/ipc/git";
   import ModeBar from "$lib/components/ModeBar.svelte";
   import SourceView from "$lib/views/SourceView.svelte";
   import PreviewView from "$lib/views/PreviewView.svelte";
+  import DiffView from "$lib/views/DiffView.svelte";
   import type { Mode } from "$lib/types";
 
   let mode = $state<Mode>("source");
@@ -13,7 +15,7 @@
     error = null;
     try {
       const loaded = await pickAndReadFile();
-      if (loaded) doc.load(loaded.path, loaded.text);
+      if (loaded) doc.load(loaded.path, loaded.text, loaded.gitAvailable);
     } catch (e) {
       error = String(e);
     }
@@ -29,6 +31,7 @@
         const path = await pickAndWriteFile(doc.text);
         if (path) {
           doc.path = path;
+          doc.gitAvailable = await gitIsRepo(path);
           doc.markSaved();
         }
       }
@@ -42,6 +45,12 @@
     const parts = p.split(/[\\/]/);
     return parts[parts.length - 1] || p;
   }
+
+  $effect(() => {
+    if (mode === "diff" && !doc.gitAvailable) {
+      mode = "source";
+    }
+  });
 
   $effect(() => {
     function onKey(e: KeyboardEvent) {
@@ -59,6 +68,9 @@
       } else if (e.key === "2") {
         e.preventDefault();
         mode = "preview";
+      } else if (e.key === "3" && doc.gitAvailable) {
+        e.preventDefault();
+        mode = "diff";
       }
     }
     window.addEventListener("keydown", onKey);
@@ -76,7 +88,7 @@
       <span class="filename">{basename(doc.path)}</span>
       {#if doc.dirty}<span class="dirty" title="Unsaved changes">●</span>{/if}
     </div>
-    <ModeBar bind:mode />
+    <ModeBar bind:mode gitAvailable={doc.gitAvailable} />
     <div class="actions">
       <button onclick={open}>Open</button>
       <button onclick={save}>Save</button>
@@ -90,8 +102,10 @@
   <main>
     {#if mode === "source"}
       <SourceView text={doc.text} onchange={(t) => doc.setText(t)} />
-    {:else}
+    {:else if mode === "preview"}
       <PreviewView text={doc.text} />
+    {:else}
+      <DiffView />
     {/if}
   </main>
 </div>

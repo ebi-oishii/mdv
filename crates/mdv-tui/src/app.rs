@@ -7,6 +7,7 @@ use ratatui::style::{Color, Style};
 use ratatui::widgets::Paragraph;
 use ratatui::Terminal;
 
+use crate::views::diff::DiffView;
 use crate::views::preview::PreviewView;
 use crate::views::source::SourceView;
 
@@ -14,19 +15,29 @@ use crate::views::source::SourceView;
 pub enum Mode {
     Source,
     Preview,
+    Diff,
 }
 
 impl Mode {
-    fn next(self) -> Self {
-        match self {
-            Mode::Source => Mode::Preview,
-            Mode::Preview => Mode::Source,
-        }
-    }
     fn label(self) -> &'static str {
         match self {
             Mode::Source => "Source",
             Mode::Preview => "Preview",
+            Mode::Diff => "Diff",
+        }
+    }
+
+    fn next(self, git_available: bool) -> Self {
+        match self {
+            Mode::Source => Mode::Preview,
+            Mode::Preview => {
+                if git_available {
+                    Mode::Diff
+                } else {
+                    Mode::Source
+                }
+            }
+            Mode::Diff => Mode::Source,
         }
     }
 }
@@ -36,19 +47,33 @@ pub struct App {
     pub path: Option<PathBuf>,
     pub source: SourceView,
     pub preview: PreviewView,
+    pub diff: DiffView,
     pub read_only: bool,
+    pub git_available: bool,
     pub saved_text: String,
     pub status: Option<String>,
 }
 
 impl App {
-    pub fn new(initial_text: String, path: Option<PathBuf>, mode: Mode, read_only: bool) -> Self {
+    pub fn new(
+        initial_text: String,
+        path: Option<PathBuf>,
+        mode: Mode,
+        read_only: bool,
+        git_available: bool,
+    ) -> Self {
         Self {
-            mode,
+            mode: if mode == Mode::Diff && !git_available {
+                Mode::Source
+            } else {
+                mode
+            },
             path,
             source: SourceView::new(&initial_text, read_only),
             preview: PreviewView::new(),
+            diff: DiffView::new(),
             read_only,
+            git_available,
             saved_text: initial_text,
             status: None,
         }
@@ -88,7 +113,11 @@ impl App {
                     return Ok(false);
                 }
                 KeyCode::Char('e') => {
-                    self.mode = self.mode.next();
+                    self.mode = self.mode.next(self.git_available);
+                    return Ok(false);
+                }
+                KeyCode::Char('d') if self.mode == Mode::Diff => {
+                    self.diff.toggle_submode();
                     return Ok(false);
                 }
                 _ => {}
@@ -106,7 +135,17 @@ impl App {
                 KeyCode::Char('k') | KeyCode::Up => self.preview.scroll_up(1),
                 KeyCode::PageDown | KeyCode::Char(' ') => self.preview.scroll_down(10),
                 KeyCode::PageUp => self.preview.scroll_up(10),
-                KeyCode::Tab => self.mode = self.mode.next(),
+                KeyCode::Tab => self.mode = self.mode.next(self.git_available),
+                _ => {}
+            },
+            Mode::Diff => match key.code {
+                KeyCode::Char('q') => return Ok(true),
+                KeyCode::Char('j') | KeyCode::Down => self.diff.scroll_down(1),
+                KeyCode::Char('k') | KeyCode::Up => self.diff.scroll_up(1),
+                KeyCode::PageDown | KeyCode::Char(' ') => self.diff.scroll_down(10),
+                KeyCode::PageUp => self.diff.scroll_up(10),
+                KeyCode::Char('d') | KeyCode::Tab => self.diff.toggle_submode(),
+                KeyCode::Char('e') => self.mode = self.mode.next(self.git_available),
                 _ => {}
             },
         }
@@ -147,8 +186,35 @@ impl App {
         match self.mode {
             Mode::Source => self.source.render(frame, chunks[1]),
             Mode::Preview => self.preview.render(frame, chunks[1], &self.source.text()),
+            Mode::Diff => self.render_diff(frame, chunks[1]),
         }
         self.draw_footer(frame, chunks[2]);
+    }
+
+    fn render_diff(&self, frame: &mut ratatui::Frame<'_>, area: ratatui::layout::Rect) {
+        use crate::views::diff::Submode;
+        let Some(path) = &self.path else {
+            self.diff.render_message(frame, area, "No file open.");
+            return;
+        };
+        if !self.git_available {
+            self.diff
+                .render_message(frame, area, "This file is not in a Git repository.");
+            return;
+        }
+        let text = self.source.text();
+        match self.diff.submode {
+            Submode::Highlight => {
+                match mdv_core::git::diff_text_against_head(path, &text) {
+                    Ok(hunks) => self.diff.render_highlight(frame, area, &text, &hunks),
+                    Err(e) => self.diff.render_message(frame, area, &e.to_string()),
+                }
+            }
+            Submode::Full => match mdv_core::git::full_diff_against_head(path, &text) {
+                Ok(lines) => self.diff.render_full(frame, area, &lines),
+                Err(e) => self.diff.render_message(frame, area, &e.to_string()),
+            },
+        }
     }
 
     fn draw_header(&self, frame: &mut ratatui::Frame<'_>, area: ratatui::layout::Rect) {
@@ -177,6 +243,10 @@ impl App {
             (None, Mode::Preview) => format!(
                 " [{}]   j/k scroll  s save  Tab mode  q quit",
                 self.mode.label(),
+            ),
+            (None, Mode::Diff) => format!(
+                " [Diff · {}]   j/k scroll  Tab/^D submode  ^E mode  q quit",
+                self.diff.submode.label(),
             ),
         };
         frame.render_widget(

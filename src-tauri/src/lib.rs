@@ -4,9 +4,21 @@ use commands::fs::{read_text_file, write_text_file};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![read_text_file, write_text_file])
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        read_text_file,
+        write_text_file,
+        commands::git::git_is_repo,
+        commands::git::git_hunks,
+        commands::git::git_full_diff,
+    ]);
+
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![read_text_file, write_text_file]);
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use thiserror::Error;
 
-use crate::diff::{line_diff, HunkSummary};
+use crate::diff::{full_diff, line_diff, DiffLine, HunkSummary};
 
 #[derive(Debug, Error)]
 pub enum GitError {
@@ -18,20 +18,39 @@ pub enum GitError {
     NotUtf8,
 }
 
+pub fn is_in_repo(file: &Path) -> bool {
+    git2::Repository::discover(file).is_ok()
+}
+
 pub fn diff_against_head(file: &Path) -> Result<Vec<HunkSummary>, GitError> {
+    let current = std::fs::read_to_string(file)?;
+    diff_text_against_head(file, &current)
+}
+
+pub fn diff_text_against_head(file: &Path, current: &str) -> Result<Vec<HunkSummary>, GitError> {
+    let head = head_text_for(file)?;
+    Ok(line_diff(&head, current))
+}
+
+pub fn full_diff_against_head(file: &Path, current: &str) -> Result<Vec<DiffLine>, GitError> {
+    let head = head_text_for(file)?;
+    Ok(full_diff(&head, current))
+}
+
+fn head_text_for(file: &Path) -> Result<String, GitError> {
     let repo = git2::Repository::discover(file).map_err(|_| GitError::NotARepo)?;
     let workdir = repo.workdir().ok_or(GitError::NotARepo)?;
     let rel = file
         .strip_prefix(workdir)
         .map_err(|_| GitError::OutsideRepo)?;
-
-    let head_text = read_head_blob(&repo, rel)?;
-    let current_text = std::fs::read_to_string(file)?;
-    Ok(line_diff(&head_text, &current_text))
+    read_head_blob(&repo, rel)
 }
 
 fn read_head_blob(repo: &git2::Repository, rel: &Path) -> Result<String, GitError> {
-    let head = repo.head()?.peel_to_tree()?;
+    let head = match repo.head() {
+        Ok(h) => h.peel_to_tree()?,
+        Err(_) => return Ok(String::new()),
+    };
     let entry = match head.get_path(rel) {
         Ok(e) => e,
         Err(_) => return Ok(String::new()),

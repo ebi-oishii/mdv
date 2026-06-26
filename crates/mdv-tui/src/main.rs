@@ -33,6 +33,7 @@ struct Args {
 enum ModeArg {
     Source,
     Preview,
+    Diff,
 }
 
 impl From<ModeArg> for Mode {
@@ -40,6 +41,7 @@ impl From<ModeArg> for Mode {
         match m {
             ModeArg::Source => Mode::Source,
             ModeArg::Preview => Mode::Preview,
+            ModeArg::Diff => Mode::Diff,
         }
     }
 }
@@ -55,7 +57,18 @@ fn main() -> Result<()> {
         None => (String::new(), None),
     };
 
-    let mut app = App::new(initial_text, path, args.mode.into(), args.read_only);
+    let git_available = path
+        .as_ref()
+        .map(|p| mdv_core::git::is_in_repo(p))
+        .unwrap_or(false);
+
+    let mut app = App::new(
+        initial_text,
+        path,
+        args.mode.into(),
+        args.read_only,
+        git_available,
+    );
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
