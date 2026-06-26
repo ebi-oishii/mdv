@@ -1,0 +1,15 @@
+[package]
+name = "mdv-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Shared logic for mdv (document state, diff, git)."
+
+[dependencies]
+serde = { workspace = true }
+similar = { workspace = true }
+thiserror = { workspace = true }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+git2 = { workspace = true }

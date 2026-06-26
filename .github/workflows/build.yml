@@ -43,14 +43,14 @@ jobs:
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
 
       - run: npm ci
 
       - name: Type check
         run: npm run check
 
-      - name: Cargo check
-        working-directory: src-tauri
-        run: cargo check --target ${{ matrix.target }}
+      - name: Cargo check (workspace)
+        run: cargo check --workspace --target ${{ matrix.target }}
+
+      - name: Cargo test (mdv-core)
+        run: cargo test -p mdv-core --target ${{ matrix.target }}
