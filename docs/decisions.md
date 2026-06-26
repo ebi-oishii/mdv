@@ -134,7 +134,50 @@
   - "less 代替" としての需要には `--read-only` で応えられる
 - **代償**: 誤って書き換える事故の可能性は残る → 保存時は明示的に `Ctrl+S` か `:w` が必要なため実害は小さい
 
-## ADR-011: スタイルは Tailwind ではなく素の CSS + CSS 変数
+## ADR-011: Diff の Side-by-Side ハイライトは markdown-it token.map を使う
+
+- **採用**: markdown-it の組み込み機能 `token.map = [start_line, end_line]` を
+  使い、`parse → ハンクと重なるブロックに class 注入 → render` の 2 段パイプラインで
+  実装する
+- **比較**:
+  - markdown-it-source-map プラグイン（全要素に `data-source-line` を出す）
+  - 両側 HTML を DOM diff して `<mark>` 挿入（文字単位）
+- **決め手**:
+  - 外部依存ゼロ、markdown-it 既存
+  - ブロック単位のハイライトで HTML 構造を一切変えない
+  - 段落・見出し・リスト・コードブロック・テーブルにそのまま効く
+- **代償**:
+  - 段落内 1 字違いでも段落全体が塗られる（精度はブロック単位まで）
+- **却下理由**:
+  - source-map プラグイン: token.map で十分。依存追加の見返りなし
+  - DOM diff 方式: HTML 構造を壊しやすく、テーブルや list 内で破綻する
+
+## ADR-012: HunkSummary は NEW と OLD 両側の行範囲を保持する
+
+- **採用**: `HunkSummary { kind, new_start, new_end, old_start, old_end }`
+- **背景**: 既存は `start_line, end_line, removed_count` の NEW 中心 API。
+  Side-by-Side の OLD 側ハイライトに必要な OLD 行情報が取れない
+- **比較**: NEW 用と OLD 用で別関数を用意 / HunkSummary をネスト型に
+- **決め手**:
+  - 1 つの型で両方の情報を持つほうが呼び出し側がシンプル
+  - 空範囲は `start == end == 0` で表現（Added/Removed に対応）
+- **代償**: 既存の Highlight Only / Full の実装に小幅な改修が入る（命名と
+  派生計算の追加）
+- **却下理由**:
+  - 別関数: 同じ DiffOp を 2 回走査する無駄、整合性のバグ温床
+
+## ADR-013: TUI の Side-by-Side は MD レンダリングではなく Source テキストの並置
+
+- **採用**: TUI Side-by-Side は左右に Source テキストを並べ、ハンクで色付け
+- **理由**:
+  - 80 桁端末で MD の 2 ペインレンダリングは可読性破綻
+  - 「左右で見比べる」目的だけなら Source 並置でも十分達成できる
+- **挙動**: 横幅 < 100 桁の端末では Side-by-Side サブモード自体を無効化
+  （Tab で巡回時にスキップ）
+- **代償**: GUI と TUI で同じ Diff サブモード名の体験が異なる → ヘルプで
+  明示する
+
+## ADR-014: スタイルは Tailwind ではなく素の CSS + CSS 変数
 
 - **採用**: 素の CSS（コンポーネントスコープ） + CSS カスタムプロパティでテーマ
 - **比較**: Tailwind / UnoCSS

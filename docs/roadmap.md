@@ -7,46 +7,61 @@
 - [x] `npm run check` と `cargo check` が通る
 - [x] CI（GitHub Actions, Mac/Win/Linux）
 
-## Phase 0.5 — ワークスペース化（1〜2日）
-TUI 追加を見据えた Rust 側の再構成。
+## Phase 0.5 — ワークスペース化 ✓ 完了
+- [x] ルート `Cargo.toml` でワークスペース定義
+- [x] `crates/mdv-core/` を新設し型と共通ロジックを配置
+- [x] `src-tauri/` から `mdv-core` を path 依存
+- [x] `crates/mdv-tui/` のスケルトン（clap + ratatui Hello）
+- [x] `cargo build --workspace` 成功、CI を workspace 対応
 
-- [ ] ルートに `Cargo.toml` を作りワークスペース定義
-- [ ] `crates/mdv-core/` を新設し、Doc/Diff/Git の型と関数を移管
-- [ ] `src-tauri/` から `mdv-core` を path 依存で参照
-- [ ] `crates/mdv-tui/` の空 binary を作成（Hello World 起動のみ）
-- [ ] `cargo build --workspace` と既存 `npm run tauri dev` が共に通る
-- [ ] CI を更新（matrix に `mdv-tui` ビルドも追加）
+## Phase 1 — Source / Preview / 切替 ✓ 完了
+### GUI ✓
+- [x] ファイル開閉（custom Rust command + plugin-dialog）
+- [x] DocStore（Svelte 5 runes）
+- [x] SourceView（CodeMirror 6）
+- [x] PreviewView（markdown-it + DOMPurify）
+- [x] ModeBar 切替、⌘O/S/1/2 のショートカット
+- [ ] スクロール位置同期（行番号ベース） — Phase 5 へ先送り
 
-**DoD**: GUI と TUI 両バイナリが空っぽながらビルド・起動できる。
+### TUI ✓
+- [x] clap + crossterm + ratatui の足場
+- [x] SourceView（tui-textarea 0.7）
+- [x] PreviewView（pulldown-cmark → ratatui Text 自作レンダラ）
+- [x] Ctrl+E でモード巡回、Ctrl+S 保存、Ctrl+Q 終了
+- [ ] `:w` `:q` コマンドモード — Phase 5 へ先送り
 
-## Phase 1 — Source / Preview / 切替（1週間程度）
-GUI と TUI 並行で進める。共通ロジックは `mdv-core` に集約。
+## Phase 2 — Diff モード（Highlight Only / Full） ✓ 完了
+- [x] `mdv-core` に `line_diff` / `full_diff` / git ラッパ
+- [x] GUI DiffView（Highlight Only と Full、debounce 自動更新）
+- [x] TUI DiffView（同上、ratatui で色付け）
+- [x] ModeBar に Diff タブ、Git 配下でないと disabled
 
-### GUI
-- [ ] ファイルを開く・保存する（tauri-plugin-fs + dialog）
-- [ ] DocStore（Svelte runes）の実装
-- [ ] SourceView（CodeMirror 6 + markdown）
-- [ ] PreviewView（markdown-it + DOMPurify）
-- [ ] ModeBar による切替
-- [ ] スクロール位置同期（行番号ベース）
+## Phase 2.5 — Side-by-Side Diff（追加）
+GUI / TUI に第 3 サブモードを追加。設計は [docs/design.md §3](design.md) と
+[ADR-011〜013](decisions.md) を参照。
 
-### TUI
-- [ ] clap で引数パース（`mdv-tui [FILE] [--mode] [--read-only]`）
-- [ ] AppState とイベントループ
-- [ ] SourceView（edtui 評価 → 採否決定）
-- [ ] PreviewView（termimad もしくは pulldown-cmark + ANSI）
-- [ ] Tab でモード切替
-- [ ] `:w` / `:q` の最小コマンドモード
+### 共通基盤
+- [ ] `HunkSummary` を `{ kind, new_start, new_end, old_start, old_end }` に拡張
+- [ ] 既存 Highlight Only / Full の派生計算を新フィールド経由に置換
+- [ ] テスト追加（Added/Modified/Removed の両側行範囲を検証）
 
-**DoD**: GUI も TUI も 1MB の MD ファイルを開いて編集・保存でき、Preview を遅延なく往復できる。
+### GUI Side-by-Side
+- [ ] `mdv-core::git` に「OLD ブロブを取得して返す」関数を追加
+- [ ] Tauri command `git_side_by_side(path, current_text)` で
+  `{ old_text, new_text, hunks }` を返す
+- [ ] markdown-it の token.map をフックして `class="mdv-changed-{kind}"` を注入
+- [ ] `views/diff/SideBySideView.svelte`：2 ペイン、独立スクロール、
+  PreviewView と同じスタイル + 変更ブロック背景色
+- [ ] DiffView サブトグルに「Side-by-Side」追加
 
-## Phase 2 — Diff モード（1週間程度）
-- [ ] `mdv-core::git::diff_against_head(path) -> Vec<HunkSummary>`
-- [ ] GUI: DiffView（Highlight Only / Full サブモード）
-- [ ] TUI: DiffView（同上、ANSI 色帯と緑赤）
-- [ ] Diff 基準切替 UI（HEAD / index / 任意のリビジョン）
+### TUI Side-by-Side（簡易版）
+- [ ] `views/diff.rs` に `Submode::SideBySide` を追加
+- [ ] 横幅 < 100 桁では巡回時にスキップ
+- [ ] 左ペイン = OLD Source、右ペイン = NEW Source、各々で色付け
+- [ ] スクロールは独立
 
-**DoD**: Git 管理下の MD を編集中に、HEAD との差分が両 UI の両サブモードで表示される。
+**DoD**: GUI でレビュー的に「変わった箇所がレンダリングで見比べられる」、TUI でも
+80〜200 桁の端末で並列表示が機能する。
 
 ## Phase 3 — WYSIWYG（GUI のみ、2週間程度）
 - [ ] Milkdown 統合（Svelte ラッパ）
@@ -70,4 +85,6 @@ GUI と TUI 並行で進める。共通ロジックは `mdv-core` に集約。
 - [ ] 設定画面
 - [ ] 大容量ファイルガード
 - [ ] エラー時の挙動（ファイル消失、Git なしリポジトリなど）
+- [ ] 先送り項目: GUI スクロール同期、TUI コマンドモード、TUI Diff キャッシュ、
+  Side-by-Side の文字単位 inline diff、ペイン間スクロール同期
 - [ ] パッケージ署名と配布（GUI: dmg/msi/AppImage、TUI: cargo install / Homebrew formula）

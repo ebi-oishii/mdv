@@ -96,22 +96,76 @@ GUI 側の View 同期：
 - 表記揺れ（`*foo*` vs `_foo_`）は正規化される旨を UI で明示
 - TUI 非対応（端末では表現困難）
 
-### Diff モード（2 サブモード）
-本アプリの特色。Git 管理下のファイルを開いたときのみ有効。GUI / TUI 両対応。
+### Diff モード（3 サブモード）
+本アプリの特色。Git 管理下のファイルを開いたときのみ有効。
 
-| サブモード | 内容 | 用途 |
-|---|---|---|
-| **Full** | GitHub 風の追加（緑）・削除（赤）行 | 差分の内容を確認したいとき |
-| **Highlight Only** | 変更があった行範囲をマージンの色帯で示すのみ。中身は現状のテキスト | 編集中の文脈を崩さず「どこを触ったか」だけ把握したいとき |
+| サブモード | 内容 | 用途 | GUI | TUI |
+|---|---|---|---|---|
+| **Highlight Only** | 変更があった行範囲をマージンの色帯で示すのみ。中身は現状のテキスト | 編集中の文脈を崩さず「どこを触ったか」だけ把握したいとき | ✓ | ✓ |
+| **Full** | GitHub 風の追加（緑）・削除（赤）行を 1 ペインに統合表示 | 差分の内容を確認したいとき | ✓ | ✓ |
+| **Side-by-Side** | OLD（HEAD）プレビューと NEW（現バッファ）プレビューを左右で並べ、変更ブロックをハイライト | レビュー的な見比べ。Markdown のレンダリング結果として「どこが見栄えに影響したか」を視覚的に把握 | ✓ | △ (簡易) |
 
-差分の基準：
+#### Side-by-Side の詳細
+
+GUI：
+- 左ペイン = HEAD ブロブをそのまま markdown-it で HTML 化
+- 右ペイン = 現在のエディタバッファを HTML 化
+- 各ペインで **変更されたブロック**（段落・見出し・コードブロック等）に `mdv-changed-{added|removed|modified}` クラスを注入し、CSS で背景色を付ける
+- スクロールはまず**独立**（Phase 2.5 MVP）。両ペイン同期は Phase 5 で再検討
+
+TUI：
+- 端末では MD レンダリング 2 カラムは可読性が厳しいため、簡易版として
+  **Source テキスト同士を左右に並べ、Highlight Only と同じ行ベースの色付け** を行う
+- 横幅 < 100 桁の端末では Side-by-Side サブモードは自動で無効化（Full にフォールバック）
+
+#### ハイライトの実装方針（GUI）
+
+「どの行範囲が、レンダー後の HTML のどのブロックに対応するか」のマッピングが必要。
+**markdown-it の token.map を使う方式（外部依存なし）** を採用：
+
+1. `md.parse(text, env)` でトークン列を取得（各トークンの `token.map = [start_line, end_line]` あり）
+2. トップレベルトークン（block_open 系）を走査し、map がハンクの行範囲と重なるかチェック
+3. 重なる場合 `token.attrJoin("class", "mdv-changed-{kind}")` でクラスを追加
+4. `md.renderer.render(tokens, md.options, env)` で HTML 化
+
+長所：
+- 外部プラグイン不要
+- ブロック単位ハイライトで構造を壊さない
+- 段落・見出し・リスト・コードブロック・テーブル等にそのまま効く
+
+短所：
+- 段落内の数文字変更でも段落丸ごとが色付く（文字単位差分は Phase 5 以降）
+
+#### 差分の基準
 - デフォルトは `HEAD` との差分
-- 設定で `インデックス（ステージ済み）` / `作業ツリー全体` を切替可能（Phase 2）
+- 設定で `インデックス（ステージ済み）` / `作業ツリー全体` を切替可能（Phase 5）
 
-差分計算：
+#### データモデル（HunkSummary 拡張）
+
+Side-by-Side のために、ハンクは **OLD と NEW 両方の行範囲** を持つ必要がある：
+
+```rust
+pub struct HunkSummary {
+    pub kind: HunkKind,        // Added | Modified | Removed
+    pub new_start: usize,      // 1-based、空範囲は 0
+    pub new_end: usize,
+    pub old_start: usize,
+    pub old_end: usize,
+}
+```
+
+派生：
+- `removed_count()` = `old_end - old_start + 1` if non-empty
+- Added: `old_start = old_end = 0`
+- Removed: `new_start = new_end = 0`、`old_*` が削除範囲
+- Modified: 両方 non-empty
+
+既存の Highlight Only / Full もこの新型から派生する。
+
+#### 差分計算
 - `mdv-core` で `similar` crate を使い行ベース diff、`git2` で HEAD ツリーを取得
-- 結果は `HunkSummary { start_line, end_line, kind }` のリスト
-- GUI: IPC で渡し、Highlight Only は CodeMirror デコレーション、Full は Svelte 側で 2 カラム描画
+- 結果は `HunkSummary` のリスト
+- GUI: IPC で渡し、Highlight Only は CSS 色帯、Full は 4 カラム描画、Side-by-Side は markdown-it token.map 経由でクラス注入
 - TUI: 同じ型を ratatui で描画
 
 ---
@@ -129,6 +183,14 @@ GUI 側の View 同期：
 | `mdv-tui --mode preview file.md` | 初期モードを指定（source / preview / diff） |
 | `mdv-tui --read-only file.md` | 読み取り専用 |
 | `mdv-tui --diff-base HEAD~1 file.md` | 差分基準を指定 |
+
+### TUI Diff サブモード
+
+GUI と同じ Diff サブモードを Tab / Ctrl+D で巡回：
+- **Highlight Only**：行番号脇の `▎` 色帯と本文の色付け
+- **Full**：旧/新行番号 + +/− + 本文の単一カラム
+- **Side-by-Side**（簡易版）：Source テキストを左右に並べ、ハンクで色付け
+  （MD レンダリングはせず raw テキスト）。横幅 < 100 桁の端末では非表示
 
 ### TUI レイアウト
 
@@ -284,3 +346,5 @@ mdv/
 | 大きな Git リポジトリでの diff 計算が遅い | git2 のフックを使い変更ファイルのみ対象に絞る |
 | TUI 編集ウィジェット（edtui 等）の日本語幅計算が壊れがち | 早期に CJK + 絵文字テストを書き、必要なら自作にフォールバック |
 | GUI と TUI で挙動・キーバインドの一貫性を保つコスト | `mdv-core` を介し共通ロジックは 100% 共有、UI 固有はモード単位で実装方針を別途定める |
+| Side-by-Side のブロック単位ハイライトが「段落内の一字違い」を段落全体で塗ってしまう | Phase 5 で文字単位 inline diff のオプションを検討。MVP では許容 |
+| Side-by-Side の HunkSummary API 拡張が既存 Highlight Only / Full の実装に波及 | Phase 2.5 の最初に diff モジュールを集中改修、テストで全 3 サブモードを検証 |
