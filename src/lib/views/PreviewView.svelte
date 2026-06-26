@@ -14,19 +14,23 @@
   const html = $derived(DOMPurify.sanitize(md.render(text)));
 </script>
 
-<article class="preview">
-  {@html html}
-</article>
+<div class="preview-scroller">
+  <article class="preview">
+    {@html html}
+  </article>
+</div>
 
 <style>
-  .preview {
+  .preview-scroller {
     height: 100%;
     overflow: auto;
+  }
+  .preview {
+    max-width: 92ch;
+    margin: 0 auto;
     padding: 2rem 3rem 4rem;
     line-height: 1.7;
     font-size: 16px;
-    max-width: 80ch;
-    margin: 0 auto;
   }
   .preview :global(h1) {
     font-size: 2rem;
