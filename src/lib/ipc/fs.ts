@@ -1,15 +1,23 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { gitIsRepo } from "./git";
+import { mdvExtractBody } from "./mdv";
 
-const MD_FILTER = { name: "Markdown", extensions: ["md", "markdown"] };
+const MD_FILTER = { name: "Markdown", extensions: ["md", "markdown", "mdv"] };
 
 export type LoadedFile = { path: string; text: string; gitAvailable: boolean };
 
 export async function pickAndReadFile(): Promise<LoadedFile | null> {
   const selected = await openDialog({ multiple: false, filters: [MD_FILTER] });
   if (typeof selected !== "string") return null;
-  const text = await invoke<string>("read_text_file", { path: selected });
+  const raw = await invoke<string>("read_text_file", { path: selected });
+  // `.mdv` files carry a trailing `<!-- mdv:v1 ... -->` package block. Strip it
+  // before handing to the editor so the user sees plain Markdown. The history
+  // bundle is intentionally discarded — per the design, import doesn't merge
+  // back into Git.
+  const text = selected.toLowerCase().endsWith(".mdv")
+    ? await mdvExtractBody(raw)
+    : raw;
   const gitAvailable = await gitIsRepo(selected);
   return { path: selected, text, gitAvailable };
 }

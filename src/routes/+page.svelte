@@ -15,6 +15,7 @@
     renderToPlainText,
   } from "$lib/export";
   import ModeBar from "$lib/components/ModeBar.svelte";
+  import MdvExportDialog from "$lib/components/MdvExportDialog.svelte";
   import SourceView from "$lib/views/SourceView.svelte";
   import LivePreviewView from "$lib/views/LivePreviewView.svelte";
   import WysiwygView from "$lib/views/WysiwygView.svelte";
@@ -101,6 +102,32 @@
     } catch (e) {
       error = String(e);
     }
+  }
+
+  let mdvDialogOpen = $state(false);
+
+  function openMdvDialog() {
+    exportOpen = false;
+    error = null;
+    if (!doc.path) {
+      error = ".mdv export requires a saved file in a Git repository";
+      return;
+    }
+    if (!doc.gitAvailable) {
+      error = "this file is not in a Git repository";
+      return;
+    }
+    mdvDialogOpen = true;
+  }
+
+  let mdvStatus = $state<string | null>(null);
+
+  function onMdvSaved(msg: string) {
+    mdvDialogOpen = false;
+    mdvStatus = msg;
+    setTimeout(() => {
+      if (mdvStatus === msg) mdvStatus = null;
+    }, 6000);
   }
 
   async function save() {
@@ -214,6 +241,16 @@
             <button role="menuitem" onclick={exportPdf}>PDF (via print)</button>
             <button role="menuitem" onclick={exportPlainText}>Plain text</button>
             <button role="menuitem" onclick={exportDocx}>DOCX</button>
+            <button
+              role="menuitem"
+              onclick={openMdvDialog}
+              disabled={!doc.gitAvailable}
+              title={doc.gitAvailable
+                ? "Bundle history into a .mdv package"
+                : "Requires a Git-managed file"}
+            >
+              .mdv (with history)
+            </button>
           </div>
         {/if}
       </div>
@@ -223,6 +260,12 @@
 
   {#if error}
     <div class="error">{error}</div>
+  {/if}
+  {#if mdvStatus}
+    <div class="info">
+      {mdvStatus}
+      <button class="dismiss" onclick={() => (mdvStatus = null)}>×</button>
+    </div>
   {/if}
   {#if normalization && mode === "wysiwyg"}
     <div class="warn">
@@ -253,6 +296,15 @@
       <DiffView />
     {/if}
   </main>
+
+  {#if mdvDialogOpen && doc.path}
+    <MdvExportDialog
+      path={doc.path}
+      currentText={doc.text}
+      onSaved={onMdvSaved}
+      onCancel={() => (mdvDialogOpen = false)}
+    />
+  {/if}
 </div>
 
 <style>
@@ -383,6 +435,26 @@
     color: light-dark(#7a5a00, #e8c97a);
     border-bottom: 1px solid light-dark(#f0d68c, #5a4a20);
     font-size: 0.85rem;
+  }
+  .info {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: light-dark(#eaf6ed, #1e3023);
+    color: light-dark(#1a5d2a, #8edda1);
+    border-bottom: 1px solid light-dark(#bfe2c8, #2a4530);
+    font-size: 0.85rem;
+  }
+  .info .dismiss {
+    margin-left: auto;
+    background: transparent;
+    border: 0;
+    font-size: 1.1rem;
+    line-height: 1;
+    color: inherit;
+    cursor: pointer;
+    padding: 0 0.3em;
   }
   .warn .dismiss {
     margin-left: auto;

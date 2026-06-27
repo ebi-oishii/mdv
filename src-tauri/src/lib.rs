@@ -16,6 +16,8 @@ pub fn run() {
         commands::git::git_hunks,
         commands::git::git_full_diff,
         commands::git::git_side_by_side,
+        commands::mdv::mdv_pack,
+        commands::mdv::mdv_extract_body,
     ]);
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
