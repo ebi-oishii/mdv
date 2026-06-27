@@ -42,15 +42,17 @@
     // After load, query Milkdown's own serialization of the doc to detect
     // round-trip normalization (e.g. `*foo*` <-> `_foo_`, link reference
     // expansion, trailing newline adjustment). If different from what we
-    // loaded, surface it so the parent can warn the user.
+    // loaded, surface it via `onnormalize` so the parent can both warn the
+    // user AND adopt the normalized form as the new baseline (so the dirty
+    // indicator doesn't appear just from opening WYSIWYG).
+    //
+    // We intentionally do NOT call `onchange` here — that's reserved for
+    // genuine user edits via the listener.
     try {
       const serialized = editor.action(getMarkdown());
       lastEmitted = serialized;
       if (serialized.trim() !== initial.trim()) {
         onnormalize?.(initial, serialized);
-        // Push the normalized form upstream so DocStore reflects what
-        // WYSIWYG is actually editing.
-        onchange(serialized);
       }
     } catch {
       // getMarkdown not available in this build; skip detection silently.

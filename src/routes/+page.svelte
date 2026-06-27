@@ -28,9 +28,13 @@
   let error = $state<string | null>(null);
   let normalization = $state<string | null>(null);
 
-  function handleNormalize(_orig: string, _normalized: string) {
+  function handleNormalize(_orig: string, normalized: string) {
     normalization =
       "WYSIWYG により表記が正規化されました（例: `*foo*` / `_foo_` の統一、リンクの展開、改行整理など）。Source モードで内容を確認できます。";
+    // Adopt the normalized form as the new baseline so we don't show a spurious
+    // dirty mark just from opening WYSIWYG. If the user already had unsaved
+    // edits, `adoptNormalized` preserves them.
+    doc.adoptNormalized(normalized);
   }
 
   async function open() {
