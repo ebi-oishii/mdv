@@ -5,6 +5,7 @@
   import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
   import { markdown } from "@codemirror/lang-markdown";
   import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+  import { doc } from "$lib/stores/doc.svelte";
 
   let {
     text,
@@ -37,9 +38,32 @@
     });
     view = new EditorView({ state, parent: container });
     lastEmitted = text;
+
+    // Restore scroll position from DocStore so mode switches stay in place.
+    // Defer one frame so CodeMirror has measured the layout.
+    const restore = doc.currentLine;
+    requestAnimationFrame(() => {
+      if (!view) return;
+      const total = view.state.doc.lines;
+      const safe = Math.max(1, Math.min(total, restore));
+      const pos = view.state.doc.line(safe).from;
+      view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: "start" }) });
+    });
   });
 
-  onDestroy(() => view?.destroy());
+  onDestroy(() => {
+    // Save topmost visible source line before tearing down so the next mode
+    // can scroll there.
+    if (view) {
+      try {
+        const block = view.lineBlockAtHeight(view.scrollDOM.scrollTop);
+        doc.currentLine = view.state.doc.lineAt(block.from).number;
+      } catch {
+        // best-effort; ignore if the layout isn't available
+      }
+    }
+    view?.destroy();
+  });
 
   $effect(() => {
     if (view && text !== lastEmitted) {

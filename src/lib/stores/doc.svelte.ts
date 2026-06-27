@@ -4,6 +4,16 @@ class DocStore {
   savedText = $state("");
   gitAvailable = $state(false);
 
+  /**
+   * Topmost visible source line (1-based). Views write to this on unmount and
+   * read from it on mount so switching modes keeps the user at the same place.
+   * View implementations differ:
+   *   - SourceView / LivePreviewView: CodeMirror lineBlockAtHeight
+   *   - PreviewView: `[data-mdv-line]` attributes injected via markdown-it
+   *   - WysiwygView: not yet wired (Milkdown doesn't expose source positions)
+   */
+  currentLine = $state(1);
+
   get dirty() {
     return this.text !== this.savedText;
   }
@@ -17,6 +27,7 @@ class DocStore {
     this.text = text;
     this.savedText = text;
     this.gitAvailable = gitAvailable;
+    this.currentLine = 1;
   }
 
   markSaved() {

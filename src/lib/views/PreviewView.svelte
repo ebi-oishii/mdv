@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { onDestroy, onMount } from "svelte";
   import MarkdownIt from "markdown-it";
   import DOMPurify from "dompurify";
   import taskLists from "markdown-it-task-lists";
+  import { doc } from "$lib/stores/doc.svelte";
 
   let { text }: { text: string } = $props();
 
@@ -13,10 +15,71 @@
   });
   md.use(taskLists, { enabled: false, label: false });
 
-  const html = $derived(DOMPurify.sanitize(md.render(text)));
+  /**
+   * 2-stage pipeline: parse → annotate each block_open token with its source
+   * line range as `data-mdv-line` → render. The attributes let us map between
+   * scroll positions in the rendered DOM and source line numbers, which is
+   * the basis for cross-mode scroll sync.
+   */
+  const html = $derived.by(() => {
+    const tokens = md.parse(text, {});
+    for (const token of tokens) {
+      if (token.map && token.type.endsWith("_open")) {
+        token.attrJoin("data-mdv-line", String(token.map[0] + 1));
+      }
+    }
+    return DOMPurify.sanitize(md.renderer.render(tokens, md.options, {}));
+  });
+
+  let scroller: HTMLDivElement;
+
+  function topVisibleLine(): number | null {
+    if (!scroller) return null;
+    const top = scroller.getBoundingClientRect().top;
+    const blocks = scroller.querySelectorAll<HTMLElement>("[data-mdv-line]");
+    let last: number | null = null;
+    for (const block of blocks) {
+      const rect = block.getBoundingClientRect();
+      // The first block whose top is at or below the viewport top wins.
+      if (rect.top >= top - 2) {
+        const n = Number(block.dataset.mdvLine);
+        return Number.isFinite(n) ? n : last;
+      }
+      const n = Number(block.dataset.mdvLine);
+      if (Number.isFinite(n)) last = n;
+    }
+    return last;
+  }
+
+  function scrollToLine(line: number) {
+    if (!scroller) return;
+    const blocks = Array.from(
+      scroller.querySelectorAll<HTMLElement>("[data-mdv-line]"),
+    );
+    if (blocks.length === 0) return;
+    // Find the block whose data-mdv-line is the largest value <= `line`.
+    let target: HTMLElement = blocks[0];
+    for (const block of blocks) {
+      const n = Number(block.dataset.mdvLine);
+      if (Number.isFinite(n) && n <= line) target = block;
+      else break;
+    }
+    scroller.scrollTop = target.offsetTop;
+  }
+
+  onMount(() => {
+    // Wait one frame for the rendered HTML to land in the DOM.
+    const line = doc.currentLine;
+    requestAnimationFrame(() => scrollToLine(line));
+  });
+
+  onDestroy(() => {
+    const line = topVisibleLine();
+    if (line != null) doc.currentLine = line;
+  });
 </script>
 
-<div class="preview-scroller">
+<div class="preview-scroller" bind:this={scroller}>
   <article class="preview">
     {@html html}
   </article>
