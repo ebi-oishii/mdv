@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use mdv_core::git::{list_bases, BaseKind, BaseOption};
+use mdv_core::git::{list_bases, BaseKind, BaseOption, DiffMarker};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -58,14 +58,14 @@ impl BasePicker {
                     BaseKind::Tag => (" tag     ", Color::Magenta),
                     BaseKind::Commit => (" commit  ", Color::Yellow),
                 };
-                let marker = match opt.differs {
-                    Some(true) => {
+                let marker = match opt.marker {
+                    DiffMarker::Differs => {
                         Span::styled("● ", Style::default().fg(Color::Yellow))
                     }
-                    Some(false) => {
+                    DiffMarker::Identical => {
                         Span::styled("○ ", Style::default().fg(Color::DarkGray))
                     }
-                    None => Span::raw("  "),
+                    DiffMarker::Redundant | DiffMarker::Unknown => Span::raw("  "),
                 };
                 let mut spans = vec![
                     marker,

@@ -81,7 +81,12 @@
   }
 
   function optionLabel(b: BaseOption): string {
-    const marker = b.differs === true ? "● " : b.differs === false ? "○ " : "  ";
+    const marker =
+      b.marker === "differs"
+        ? "● "
+        : b.marker === "identical"
+          ? "○ "
+          : "  "; // redundant or unknown
     return marker + b.label;
   }
 
@@ -126,7 +131,7 @@
         <select
           bind:value={selected}
           aria-label="Compare base revision"
-          title="● = differs from current buffer · ○ = identical"
+          title="● = differs from current buffer · ○ = identical · (blank) = same content as a more recent commit shown above"
         >
           <optgroup label="Special">
             {#each byKind("special") as b}
