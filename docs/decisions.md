@@ -45,19 +45,26 @@
   - Monaco: 大きすぎる（数 MB）、デスクトップ前提のスタイル
   - 自前: スクロール、検索、折りたたみを再発明することになる
 
-## ADR-004: WYSIWYG は Milkdown（Phase 3）
+## ADR-004: Live Preview と WYSIWYG は別モードとして採用
 
-- **採用**: Milkdown（ProseMirror ベース、MD 双方向特化）
-- **比較**: TipTap + markdown 拡張 / Lexical / 自前
+- **採用**:
+  - Live Preview: CodeMirror 6 decorations で実装
+  - WYSIWYG: Milkdown（ProseMirror ベース）を候補にする
+- **比較**: Live Preview だけ / WYSIWYG だけ / TipTap / Lexical
 - **決め手**:
-  - 設計思想が "MD を一級市民として扱う" → Source ↔ WYSIWYG の往復に最適
-  - プラグイン分割が細かく、必要機能だけロード可能
+  - Live Preview は Source の正確性を保ちつつ、編集中も rendered result に近い見え方を得られる
+  - WYSIWYG は Markdown 記法を意識せずに軽く直したい場面で有効
+  - 両方を分けることで、source を保ちたい時と rich editing したい時をユーザーが選べる
+  - CodeMirror 6 の既存状態を活かしつつ、必要な rich editing だけ Milkdown に任せられる
 - **代償**:
-  - ProseMirror 由来の API 複雑性
-  - シリアライズで表記揺れが正規化される（`*` / `_` など）→ UI で明示する必要あり
+  - GUI mode が増えるため、ModeBar とショートカット設計が複雑になる
+  - WYSIWYG の markdown round-trip で表記正規化が起きうる
+  - Live Preview と WYSIWYG の状態同期を検証する必要がある
 - **却下理由**:
-  - TipTap: WYSIWYG としては優秀だが MD への往復は別途実装する必要があり、結局 Milkdown と同等の手間
-  - Lexical: 高性能だが MD 双方向のエコシステムが薄い
+  - Live Preview だけ: Markdown 記法を意識せず直したい用途を満たせない
+  - WYSIWYG だけ: source の制御感と Markdown 表記保持が弱くなる
+  - TipTap: WYSIWYG としては優秀だが Markdown source を一級に保つには追加実装が重い
+  - Lexical: 高性能だが Markdown round-trip のエコシステムが薄い
 
 ## ADR-005: Markdown パーサは markdown-it（表示）+ pulldown-cmark（必要時）
 

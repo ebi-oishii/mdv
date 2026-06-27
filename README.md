@@ -3,7 +3,7 @@
 軽量・クロスプラットフォームの Markdown ビューア兼エディタ。
 
 - Desktop (Mac / Windows / Linux) + Mobile (iOS / Android)
-- Source / Preview / WYSIWYG の3モード編集
+- Source / Live Preview / WYSIWYG / Preview の編集・閲覧モード
 - Git 管理下のファイルでは GitHub 風の差分ビュー、または変更箇所のハイライトのみの軽量ビュー
 
 ## 開発
@@ -38,3 +38,4 @@ cargo test  --workspace    # Rust テスト
 - [docs/design.md](docs/design.md) — アーキテクチャと設計
 - [docs/decisions.md](docs/decisions.md) — 技術選定の根拠とトレードオフ
 - [docs/roadmap.md](docs/roadmap.md) — フェーズ分割
+- [docs/tooling-research.md](docs/tooling-research.md) — 既存ツールから取り入れる使用感の整理

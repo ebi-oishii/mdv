@@ -12,7 +12,7 @@
 - リアルタイム共同編集
 - クラウド同期（端末内 + 既存 Git リポジトリへの依存のみ）
 - プラグインシステム
-- TUI モードでの WYSIWYG 編集（端末では表現困難なため）
+- TUI モードでの Live Preview / WYSIWYG 編集（端末では表現困難なため）
 
 ---
 
@@ -45,13 +45,14 @@ Cargo ワークスペースで Rust コードを 3 つの crate に分割し、G
 │  WebView（SvelteKit + adapter-static, SPA）         │
 │                                                    │
 │  ┌────────────────────────────────────────────┐  │
-│  │ ModeBar: [Source][Preview][WYSIWYG][Diff]  │  │
+│  │ ModeBar: [Source][Preview][Live][WYS][Diff] │  │
 │  │           Diff サブモード: [Full|Highlight] │  │
 │  └────────────────────────────────────────────┘  │
 │  ┌────────────────────────────────────────────┐  │
 │  │ Editor Surface                              │  │
 │  │  - SourceView   (CodeMirror 6)              │  │
 │  │  - PreviewView  (markdown-it → HTML)        │  │
+│  │  - LivePreviewView (CM6 decorations)         │  │
 │  │  - WysiwygView  (Milkdown)                  │  │
 │  │  - DiffView     (CM6 + decorations)         │  │
 │  └────────────────────────────────────────────┘  │
@@ -72,6 +73,7 @@ Cargo ワークスペースで Rust コードを 3 つの crate に分割し、G
 GUI 側の View 同期：
 - SourceView は CodeMirror の状態と DocStore.text を双方向バインド
 - PreviewView は DocStore.text から HTML を派生（読み取り専用）
+- LivePreviewView（Phase 3）は CodeMirror 6 decorations を使い、DocStore.text を正の source として扱う
 - WysiwygView（Phase 3）は ProseMirror 文書と DocStore.text の同期を Milkdown が担う
 
 これにより「ボタンで切り替え」がただの View 切り替えになり、モード切替時のロストを防ぐ。
@@ -90,11 +92,22 @@ GUI 側の View 同期：
 - DOMPurify でサニタイズ（任意の HTML 埋め込みに備える）
 - スクロール位置を Source モードと共有（ヒューリスティック: 行ベース）
 
+### Live Preview モード（GUI のみ、Phase 3）
+- Typora 的な「編集中もレンダリング結果が見える」感覚を取り入れる
+- フル WYSIWYG ではなく、Source と Preview の中間 mode として扱う
+- 現在行は raw source、非アクティブ行は軽く rendered 表示
+- 見出し、強調、インラインコード、リンク、リストから対応
+- コードブロック、テーブル、画像は初期実装では source fallback
+- 表記を勝手に正規化しない（`*foo*` / `_foo_` 等はそのまま保持）
+- TUI 非対応（端末では Source / Preview 切替で代替）
+
 ### WYSIWYG モード（GUI のみ、Phase 3）
-- Milkdown（ProseMirror ベース）
+- Markdown source を意識せずに軽く直したい時の rich editing mode
+- Milkdown（ProseMirror ベース）を候補にする
 - 内部 AST → markdown シリアライズで DocStore.text を更新
-- 表記揺れ（`*foo*` vs `_foo_`）は正規化される旨を UI で明示
-- TUI 非対応（端末では表現困難）
+- 表記揺れ（`*foo*` vs `_foo_`）は正規化されうるため、Source / Live Preview と役割を分ける
+- Source を正の保存形式とし、WYSIWYG は編集体験の 1 mode として扱う
+- TUI 非対応（端末では Source / Preview 切替で代替）
 
 ### Diff モード（3 サブモード）
 本アプリの特色。Git 管理下のファイルを開いたときのみ有効。
@@ -274,7 +287,7 @@ GUI に比べて非常に軽い起動が可能なので、`grep -l "TODO" *.md |
 | アイドル時メモリ | < 100MB |
 
 施策：
-- Milkdown / DiffView は遅延ロード（dynamic import）
+- LivePreviewView / WysiwygView / DiffView は遅延ロード（dynamic import）
 - markdown-it の出力をワーカーで生成し UI スレッドを塞がない
 - 1MB 超のファイルは Source モードで開く（Preview を抑制し選択式に）
 
@@ -318,6 +331,7 @@ mdv/
 │   │   ├── views/
 │   │   │   ├── SourceView.svelte
 │   │   │   ├── PreviewView.svelte
+│   │   │   ├── LivePreviewView.svelte (Phase 3)
 │   │   │   ├── WysiwygView.svelte (Phase 3)
 │   │   │   └── DiffView.svelte
 │   │   ├── components/
@@ -340,7 +354,8 @@ mdv/
 
 | リスク | 対策 |
 |---|---|
-| Milkdown の round-trip で MD が変質する | Phase 3 開始時に主要ケース（CJK、リスト、コードブロック）の保存検証を行う |
+| Live Preview の decorations が入力を阻害する | 現在行は raw source に戻し、複雑な構文は source fallback にする |
+| Milkdown の round-trip で MD が変質する | Phase 3B 開始時に主要ケース（CJK、リスト、コードブロック）の保存検証を行い、正規化が起きる場合は通知する |
 | Tauri mobile が Beta から Stable に上がるまでは不安定 | Desktop を先に Stable リリース、Mobile は別ブランチで追従 |
 | CodeMirror 6 + 日本語 IME の挙動 | 初期段階でモバイル含め実機テスト |
 | 大きな Git リポジトリでの diff 計算が遅い | git2 のフックを使い変更ファイルのみ対象に絞る |

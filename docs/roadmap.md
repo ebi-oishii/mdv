@@ -63,13 +63,29 @@ GUI / TUI に第 3 サブモードを追加。設計は [docs/design.md §3](des
 **DoD**: GUI でレビュー的に「変わった箇所がレンダリングで見比べられる」、TUI でも
 80〜200 桁の端末で並列表示が機能する。
 
-## Phase 3 — WYSIWYG（GUI のみ、2週間程度）
+## Phase 3 — Live Preview + WYSIWYG（GUI）
+Live Preview と WYSIWYG は両方入れる。ただし役割を分ける。
+
+- Live Preview: Markdown source を保ったまま、編集中も rendered result に近い見え方にする
+- WYSIWYG: Markdown source を意識せずに軽く直したい時の rich editing mode
+
+### Phase 3A — Live Preview
+- [ ] Live Preview mode を追加（Source / Preview / Live Preview / WYSIWYG / Diff）
+- [ ] 現在行は raw source、非アクティブ行は軽く rendered 表示
+- [ ] 見出し、強調、インラインコード、リンク、リストを優先対応
+- [ ] コードブロック、テーブル、画像は初期実装では source fallback
+- [ ] 表記正規化をしない（`*foo*` / `_foo_` 等はそのまま保持）
+- [ ] Source / Preview とのスクロール位置・選択位置の移行を検証
+- [ ] CJK / IME 入力で破綻しないことを確認
+
+### Phase 3B — WYSIWYG
 - [ ] Milkdown 統合（Svelte ラッパ）
 - [ ] DocStore との双方向バインド
 - [ ] CJK / リスト / コードブロック / 画像の round-trip 検証
 - [ ] 表記正規化が起きるケースのユーザ通知
+- [ ] Source / Live Preview / WYSIWYG の切替時に編集内容を失わない
 
-**DoD**: WYSIWYG モードで編集した結果が Source モードに反映され、ファイルとして保存できる。
+**DoD**: Live Preview では source 表記を保持して編集でき、WYSIWYG では rich editing から Markdown として保存できる。
 
 ## Phase 4 — モバイル（並行可、別ブランチ）
 - [ ] iOS / Android で GUI 起動
