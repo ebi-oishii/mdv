@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { HunkKind, HunkSummary } from "$lib/types";
+  import { removedCount } from "$lib/types";
 
   let { text, hunks }: { text: string; hunks: HunkSummary[] } = $props();
 
@@ -8,7 +9,7 @@
   function markFor(lineNo: number): HunkKind | "" {
     for (const h of hunks) {
       if (h.kind === "removed") continue;
-      if (lineNo >= h.start_line && lineNo <= h.end_line) return h.kind;
+      if (lineNo >= h.new_start && lineNo <= h.new_end) return h.kind;
     }
     return "";
   }
@@ -16,7 +17,7 @@
   function removedAfter(lineNo: number): number {
     let n = 0;
     for (const h of hunks) {
-      if (h.kind === "removed" && h.start_line === lineNo) n += h.removed_count;
+      if (h.kind === "removed" && h.new_start === lineNo) n += removedCount(h);
     }
     return n;
   }

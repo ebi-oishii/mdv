@@ -9,19 +9,46 @@ pub enum HunkKind {
     Removed,
 }
 
-/// Compact descriptor for the Highlight Only view.
-/// Line numbers are 1-based and refer to the NEW buffer.
+/// Descriptor of a single change, carrying line ranges on both the OLD and
+/// NEW sides. All line numbers are 1-based. A `point` (anchor) is encoded as
+/// `start == end` (the line immediately before insertion / deletion, or 0
+/// for top-of-file).
+///
+/// Conventions per `kind`:
+/// - `Added`    : `new_*` spans the inserted lines; `old_start == old_end`
+///                points to where in OLD they would have been inserted.
+/// - `Removed`  : `old_*` spans the deleted lines; `new_start == new_end`
+///                points to where in NEW the deletion occurred.
+/// - `Modified` : both `new_*` and `old_*` span the replaced lines.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HunkSummary {
     pub kind: HunkKind,
-    /// For Added/Modified: first changed new-line. For Removed:
-    /// the new-line immediately before the deletion (0 = top of file).
-    pub start_line: usize,
-    /// For Added/Modified: last changed new-line (inclusive).
-    /// For Removed: same as `start_line`.
-    pub end_line: usize,
-    /// Number of old lines that were removed or replaced (0 for pure Added).
-    pub removed_count: usize,
+    pub new_start: usize,
+    pub new_end: usize,
+    pub old_start: usize,
+    pub old_end: usize,
+}
+
+impl HunkSummary {
+    /// Number of OLD-side lines covered (deleted or replaced). 0 for pure Added.
+    pub fn removed_count(&self) -> usize {
+        match self.kind {
+            HunkKind::Added => 0,
+            HunkKind::Removed | HunkKind::Modified => {
+                self.old_end.saturating_sub(self.old_start) + 1
+            }
+        }
+    }
+
+    /// Number of NEW-side lines covered (added or replaced). 0 for pure Removed.
+    pub fn added_count(&self) -> usize {
+        match self.kind {
+            HunkKind::Removed => 0,
+            HunkKind::Added | HunkKind::Modified => {
+                self.new_end.saturating_sub(self.new_start) + 1
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,31 +77,38 @@ pub fn line_diff(old: &str, new: &str) -> Vec<HunkSummary> {
         match op {
             DiffOp::Equal { .. } => {}
             DiffOp::Insert {
-                new_index, new_len, ..
+                old_index,
+                new_index,
+                new_len,
             } => hunks.push(HunkSummary {
                 kind: HunkKind::Added,
-                start_line: new_index + 1,
-                end_line: new_index + new_len,
-                removed_count: 0,
+                new_start: new_index + 1,
+                new_end: new_index + new_len,
+                old_start: old_index,
+                old_end: old_index,
             }),
             DiffOp::Delete {
-                old_len, new_index, ..
+                old_index,
+                old_len,
+                new_index,
             } => hunks.push(HunkSummary {
                 kind: HunkKind::Removed,
-                start_line: new_index,
-                end_line: new_index,
-                removed_count: old_len,
+                new_start: new_index,
+                new_end: new_index,
+                old_start: old_index + 1,
+                old_end: old_index + old_len,
             }),
             DiffOp::Replace {
+                old_index,
                 old_len,
                 new_index,
                 new_len,
-                ..
             } => hunks.push(HunkSummary {
                 kind: HunkKind::Modified,
-                start_line: new_index + 1,
-                end_line: new_index + new_len,
-                removed_count: old_len,
+                new_start: new_index + 1,
+                new_end: new_index + new_len,
+                old_start: old_index + 1,
+                old_end: old_index + old_len,
             }),
         }
     }
@@ -122,9 +156,13 @@ mod tests {
         let new = "a\nb\nc\n";
         let hunks = line_diff(old, new);
         assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].kind, HunkKind::Added);
-        assert_eq!(hunks[0].start_line, 3);
-        assert_eq!(hunks[0].end_line, 3);
+        let h = &hunks[0];
+        assert_eq!(h.kind, HunkKind::Added);
+        assert_eq!((h.new_start, h.new_end), (3, 3));
+        // Insertion happens after OLD line 2 → anchor = 2 (point: start == end).
+        assert_eq!((h.old_start, h.old_end), (2, 2));
+        assert_eq!(h.added_count(), 1);
+        assert_eq!(h.removed_count(), 0);
     }
 
     #[test]
@@ -133,9 +171,14 @@ mod tests {
         let new = "a\nc\n";
         let hunks = line_diff(old, new);
         assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].kind, HunkKind::Removed);
-        assert_eq!(hunks[0].start_line, 1);
-        assert_eq!(hunks[0].removed_count, 1);
+        let h = &hunks[0];
+        assert_eq!(h.kind, HunkKind::Removed);
+        // Deletion in OLD covers line 2.
+        assert_eq!((h.old_start, h.old_end), (2, 2));
+        // In NEW it sits after line 1 (anchor 1).
+        assert_eq!((h.new_start, h.new_end), (1, 1));
+        assert_eq!(h.removed_count(), 1);
+        assert_eq!(h.added_count(), 0);
     }
 
     #[test]
@@ -144,9 +187,26 @@ mod tests {
         let new = "a\nB\nc\n";
         let hunks = line_diff(old, new);
         assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].kind, HunkKind::Modified);
-        assert_eq!(hunks[0].start_line, 2);
-        assert_eq!(hunks[0].end_line, 2);
+        let h = &hunks[0];
+        assert_eq!(h.kind, HunkKind::Modified);
+        assert_eq!((h.new_start, h.new_end), (2, 2));
+        assert_eq!((h.old_start, h.old_end), (2, 2));
+        assert_eq!(h.added_count(), 1);
+        assert_eq!(h.removed_count(), 1);
+    }
+
+    #[test]
+    fn detects_multi_line_replacement() {
+        let old = "a\nb\nc\nd\n";
+        let new = "a\nX\nY\nZ\nd\n";
+        let hunks = line_diff(old, new);
+        assert_eq!(hunks.len(), 1);
+        let h = &hunks[0];
+        assert_eq!(h.kind, HunkKind::Modified);
+        assert_eq!((h.new_start, h.new_end), (2, 4));
+        assert_eq!((h.old_start, h.old_end), (2, 3));
+        assert_eq!(h.added_count(), 3);
+        assert_eq!(h.removed_count(), 2);
     }
 
     #[test]

@@ -2,11 +2,33 @@ export type Mode = "source" | "preview" | "diff";
 
 export type HunkKind = "added" | "modified" | "removed";
 
+/**
+ * Change descriptor carrying line ranges on both the OLD and NEW sides.
+ * All line numbers are 1-based. A `point` (anchor) is encoded as `start ===
+ * end` (the line immediately before insertion / deletion, or 0 for top).
+ *
+ * - `added`    : `new_*` spans inserted lines; `old_start === old_end` is the
+ *                anchor where they would appear in OLD.
+ * - `removed`  : `old_*` spans deleted lines; `new_start === new_end` is the
+ *                anchor where the deletion occurred in NEW.
+ * - `modified` : both `new_*` and `old_*` span the replaced lines.
+ */
 export interface HunkSummary {
   kind: HunkKind;
-  start_line: number;
-  end_line: number;
-  removed_count: number;
+  new_start: number;
+  new_end: number;
+  old_start: number;
+  old_end: number;
+}
+
+export function removedCount(h: HunkSummary): number {
+  if (h.kind === "added") return 0;
+  return h.old_end - h.old_start + 1;
+}
+
+export function addedCount(h: HunkSummary): number {
+  if (h.kind === "removed") return 0;
+  return h.new_end - h.new_start + 1;
 }
 
 export type DiffLine =

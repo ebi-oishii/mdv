@@ -93,8 +93,8 @@ fn highlight_lines<'a>(text: &'a str, hunks: &[HunkSummary]) -> Vec<Line<'a>> {
     let removed_at = |line: usize| -> usize {
         hunks
             .iter()
-            .filter(|h| h.kind == HunkKind::Removed && h.start_line == line)
-            .map(|h| h.removed_count)
+            .filter(|h| h.kind == HunkKind::Removed && h.new_start == line)
+            .map(|h| h.removed_count())
             .sum()
     };
 
@@ -107,7 +107,7 @@ fn highlight_lines<'a>(text: &'a str, hunks: &[HunkSummary]) -> Vec<Line<'a>> {
         let no = i + 1;
         let kind = hunks
             .iter()
-            .find(|h| h.kind != HunkKind::Removed && no >= h.start_line && no <= h.end_line)
+            .find(|h| h.kind != HunkKind::Removed && no >= h.new_start && no <= h.new_end)
             .map(|h| h.kind);
 
         let (mark, mark_style) = match kind {

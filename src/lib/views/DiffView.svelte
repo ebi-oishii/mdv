@@ -95,14 +95,15 @@
     customBase = customBase.trim() || "HEAD";
   }
 
-  const addedCount = $derived(
+  const addedSum = $derived(
+    hunks.reduce((n, h) => n + (h.kind === "removed" ? 0 : h.new_end - h.new_start + 1), 0),
+  );
+  const removedSum = $derived(
     hunks.reduce(
-      (n, h) =>
-        n + (h.kind === "added" || h.kind === "modified" ? h.end_line - h.start_line + 1 : 0),
+      (n, h) => n + (h.kind === "added" ? 0 : h.old_end - h.old_start + 1),
       0,
     ),
   );
-  const removedCount = $derived(hunks.reduce((n, h) => n + h.removed_count, 0));
 </script>
 
 <div class="diff-view">
@@ -179,8 +180,8 @@
     <div class="meta">
       {#if loading}<span class="loading">…</span>{/if}
       {#if submode === "highlight" && !loading && !error}
-        <span class="added">+{addedCount}</span>
-        <span class="removed">−{removedCount}</span>
+        <span class="added">+{addedSum}</span>
+        <span class="removed">−{removedSum}</span>
       {/if}
     </div>
   </div>
