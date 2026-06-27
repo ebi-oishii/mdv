@@ -87,13 +87,19 @@ Live Preview と WYSIWYG は両方入れる。ただし役割を分ける。
 **DoD**: Live Preview では source 表記を保持して編集でき、WYSIWYG では rich editing から Markdown として保存できる。✓
 
 ## Phase 4 — モバイル（並行可、別ブランチ）
-- [ ] iOS / Android で GUI 起動
-- [ ] レスポンシブ UI（ボトムタブ）
-- [ ] OS のファイル選択経由でドキュメントを開く
-- [ ] Git は読み取り（diff）のみ
+- [x] Android scaffold (src-tauri/gen/android, gitignore 済み)
+- [ ] iOS scaffold — cocoapods 要インストール後にユーザー実行
+- [x] レスポンシブ UI（ヘッダ wrap、ModeBar 横スクロール、
+  Side-by-Side を狭幅で縦 2 段）
+- [x] git 系コマンドが無い環境での graceful degradation
+- [ ] 実機 / シミュレータでの動作確認 — ユーザー実行
+- [ ] ボトムタブ UI（より深いモバイル体験） — Phase 5 へ送る
+- [ ] OS のファイル選択経由でドキュメントを開く — 実機検証で確認
+- [ ] Git は読み取り（diff）のみ — desktop 側で確認、モバイルでは disabled
 - ※ TUI バイナリはモバイル配布対象外
 
-**DoD**: TestFlight / 内部配布で実機動作確認。
+**DoD**: TestFlight / 内部配布で実機動作確認。実機ステップは
+ユーザー側で `npm run tauri android dev` / `... ios dev` を実行。
 
 ## Phase 5 — 仕上げ
 - [ ] テーマ（ライト/ダーク/エディタ配色、TUI は ANSI カラースキーム）
