@@ -92,7 +92,13 @@
       "Hiragino Sans",
       "Yu Gothic",
       sans-serif;
-    font-size: var(--mdv-editor-font-size, 14px);
+    /* Hard-coded 16px to match PreviewView. `ch` units depend on font-size,
+       so reading off a CSS variable (= user's editor setting) here would make
+       the 92ch max-width resolve to different actual pixels than Preview's
+       92ch. Source mode keeps the configurable font-size — it's the
+       monospace editor where users tweak size; Live Preview / Preview are
+       reading views. */
+    font-size: 16px;
     line-height: 1.7;
   }
   :global(.live .cm-scroller) {

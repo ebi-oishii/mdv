@@ -1,10 +1,26 @@
 mod commands;
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod menu;
+
 use commands::fs::{read_text_file, write_binary_file, write_text_file};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+
+    // Native menu bar on desktop. Each item emits a "menu-event" payload
+    // (its string id) that the frontend dispatches in +page.svelte.
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let builder = builder.setup(|app| {
+        use tauri::Emitter;
+        let menu_bar = menu::build(&app.handle().clone())?;
+        app.set_menu(menu_bar)?;
+        app.on_menu_event(|app, event| {
+            let _ = app.emit("menu-event", event.id().as_ref());
+        });
+        Ok(())
+    });
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder.invoke_handler(tauri::generate_handler![

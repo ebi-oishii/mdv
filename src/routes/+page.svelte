@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { doc } from "$lib/stores/doc.svelte";
   import {
     pickAndReadFile,
@@ -41,12 +42,78 @@
   const MOD = isMac ? "⌘" : "Ctrl+";
   const SHIFT = isMac ? "⇧" : "Shift+";
 
-  onMount(() => {
+  let menuUnlisten: UnlistenFn | null = null;
+
+  onMount(async () => {
     settings.hydrate();
     if (!doc.path && !doc.text) {
       mode = settings.defaultMode;
     }
+    // Native OS menu (desktop only). The Rust side emits a `menu-event`
+    // with the item id; route it back into the existing handlers so the
+    // top menu and the in-app ☰ menu share behavior.
+    try {
+      menuUnlisten = await listen<string>("menu-event", (e) =>
+        handleMenuEvent(e.payload),
+      );
+    } catch {
+      // listen unavailable (e.g. browser / SSR) — fall back to in-app menu only
+    }
   });
+
+  onDestroy(() => {
+    menuUnlisten?.();
+  });
+
+  function handleMenuEvent(id: string) {
+    switch (id) {
+      case "open":
+        open();
+        break;
+      case "save":
+        save();
+        break;
+      case "save_as":
+        saveAs();
+        break;
+      case "sample":
+        loadSample();
+        break;
+      case "export_html":
+        exportHtml();
+        break;
+      case "export_pdf":
+        exportPdf();
+        break;
+      case "export_text":
+        exportPlainText();
+        break;
+      case "export_docx":
+        exportDocx();
+        break;
+      case "export_mdv":
+        openMdvDialog();
+        break;
+      case "preferences":
+        openSettings();
+        break;
+      case "mode_source":
+        mode = "source";
+        break;
+      case "mode_live":
+        mode = "live";
+        break;
+      case "mode_wysiwyg":
+        mode = "wysiwyg";
+        break;
+      case "mode_preview":
+        mode = "preview";
+        break;
+      case "mode_diff":
+        if (doc.gitAvailable) mode = "diff";
+        break;
+    }
+  }
 
   $effect(() => {
     if (typeof document === "undefined") return;
