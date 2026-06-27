@@ -19,6 +19,8 @@ GUI（Desktop / Mobile）と TUI を 1 つの core 実装で動かす。
   変更がある base には ● マーカー（同 blob 連続区間は最古だけに集約）
 - **TUI も同等機能**: Source / Preview / Diff（Highlight / Full / Side-by-Side 簡易版）+
   ratatui の popup で base ピッカー + vim 風 `:w` `:q` `:wq` `:q!`
+- **Export to HTML / PDF / Plain text / DOCX**: GUI の Export ▾ ボタンから。
+  PDF は OS のプリントダイアログ経由（追加依存なし）
 - **配布形態**:
   - GUI = Tauri 2（Mac / Windows / Linux / iOS / Android）
   - TUI = 単独バイナリ（リリースビルドで 2.3MB）

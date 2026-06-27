@@ -101,6 +101,24 @@ Live Preview と WYSIWYG は両方入れる。ただし役割を分ける。
 **DoD**: TestFlight / 内部配布で実機動作確認。実機ステップは
 ユーザー側で `npm run tauri android dev` / `... ios dev` を実行。
 
+## Phase 6 — Export to other formats ✓ 完了
+GUI から複数形式へのエクスポート機能。`src/lib/export.ts` で共通化。
+
+- [x] HTML — markdown-it + DOMPurify、埋め込み CSS でスタンドアロン
+  .html を生成
+- [x] PDF — オフスクリーン iframe + window.print()、OS の「PDF として
+  保存」ダイアログを利用（追加依存ゼロ、3 OS 共通）
+- [x] Plain text — markdown-it のトークンを walk して構造を残しつつ
+  inline 装飾を除去（リスト・見出し・コードブロック・引用を保持）
+- [x] DOCX — @turbodocx/html-to-docx を dynamic import、base64 経由の
+  Tauri command で binary 書き出し
+- [x] Export ▾ dropdown UI、外側クリックで自動クローズ
+- [x] 既存ファイル名から拡張子を差し替えた default filename を提案
+
+未対応:
+- [ ] TUI からの export（GUI のみ。`:export <format> <path>` は将来検討）
+- [ ] EPUB / その他フォーマット
+
 ## Phase 5 — 仕上げ
 - [ ] テーマ（ライト/ダーク手動切替、エディタ配色、TUI は ANSI カラースキーム）
   ※ 現状 OS の color-scheme に自動追従
