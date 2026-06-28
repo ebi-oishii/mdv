@@ -13,9 +13,16 @@
   let oldScroller: HTMLDivElement;
   let newScroller: HTMLDivElement;
   let syncedScroll = $state(true);
-  // Guard so programmatic scrollTop writes don't echo back through the sibling
-  // pane's scroll handler and create a feedback loop.
-  let suppressSync = false;
+  /**
+   * Set of pane sides we just programmatically scrolled. The corresponding
+   * `scroll` event is consumed (and the entry removed) instead of
+   * propagating, which kills the feedback loop without depending on
+   * setTimeout ordering vs. browser scroll-event scheduling — the previous
+   * `suppressSync + setTimeout(0)` approach could "release" before the
+   * destination's scroll event drained, causing each pane to bounce the
+   * other back and the view to jitter / lock up at the extremes.
+   */
+  const inflightSync = new Set<"old" | "new">();
 
   /** Find the source line at the top of the viewport (per `data-mdv-line`). */
   function topVisibleLine(scroller: HTMLDivElement): number | null {
@@ -49,38 +56,51 @@
     scroller.scrollTop = target.offsetTop;
   }
 
-  /** Sync `dst` to `src` using line-based mapping through the diff hunks. */
-  function syncLine(side: "old" | "new") {
-    if (!syncedScroll || suppressSync) return;
-    const src = side === "old" ? oldScroller : newScroller;
-    const dst = side === "old" ? newScroller : oldScroller;
-    if (!src || !dst) return;
+  /**
+   * Drive `dst` from `src` via the line mapping. Returns true if `dst.scrollTop`
+   * actually moved (in which case the caller marks `dst` as inflight so the
+   * resulting scroll event won't bounce back).
+   */
+  function driveSync(srcSide: "old" | "new"): boolean {
+    const src = srcSide === "old" ? oldScroller : newScroller;
+    const dst = srcSide === "old" ? newScroller : oldScroller;
+    if (!src || !dst) return false;
     const srcLine = topVisibleLine(src);
-    if (srcLine == null) return;
+    if (srcLine == null) return false;
     const dstLine =
-      side === "old"
+      srcSide === "old"
         ? mapOldToNew(srcLine, payload.hunks)
         : mapNewToOld(srcLine, payload.hunks);
-    suppressSync = true;
+    const before = dst.scrollTop;
     scrollToLine(dst, dstLine);
-    setTimeout(() => {
-      suppressSync = false;
-    }, 0);
+    return dst.scrollTop !== before;
+  }
+
+  function onScroll(side: "old" | "new") {
+    if (!syncedScroll) return;
+    if (inflightSync.has(side)) {
+      // This scroll was caused by our own driveSync — consume the marker so
+      // future genuine user scrolls on this pane are not ignored.
+      inflightSync.delete(side);
+      return;
+    }
+    const dstSide = side === "old" ? "new" : "old";
+    if (driveSync(side)) inflightSync.add(dstSide);
   }
 
   function onOldScroll() {
-    syncLine("old");
+    onScroll("old");
   }
   function onNewScroll() {
-    syncLine("new");
+    onScroll("new");
   }
 
   function toggleSync() {
     syncedScroll = !syncedScroll;
     if (syncedScroll) {
-      // Snap the OLD pane to follow NEW right now — the user's "now" is
-      // wherever they last interacted, and NEW is the editing target.
-      syncLine("new");
+      // Snap OLD to follow NEW right now — NEW is the editing target, so
+      // align the comparison view to where the user currently is.
+      if (driveSync("new")) inflightSync.add("old");
     }
   }
 
@@ -159,22 +179,25 @@
 </script>
 
 <div class="sbs">
+  <!-- LEFT pane: current buffer. The "primary" side that the user is
+       editing reads left-to-right naturally; the comparison base sits to
+       the right as the reference. -->
   <div class="pane">
     <div class="pane-header">
-      <span class="side-label">old</span>
-      <span class="base-label">{baseLabel}</span>
-    </div>
-    <div class="pane-scroller" bind:this={oldScroller} onscroll={onOldScroll}>
-      <article class="preview">{@html oldHtml}</article>
-    </div>
-  </div>
-  <div class="pane">
-    <div class="pane-header">
-      <span class="side-label">new</span>
+      <span class="side-label new">new</span>
       <span class="base-label">current buffer</span>
     </div>
     <div class="pane-scroller" bind:this={newScroller} onscroll={onNewScroll}>
       <article class="preview">{@html newHtml}</article>
+    </div>
+  </div>
+  <div class="pane">
+    <div class="pane-header">
+      <span class="side-label old">old</span>
+      <span class="base-label">{baseLabel}</span>
+    </div>
+    <div class="pane-scroller" bind:this={oldScroller} onscroll={onOldScroll}>
+      <article class="preview">{@html oldHtml}</article>
     </div>
   </div>
   <button
