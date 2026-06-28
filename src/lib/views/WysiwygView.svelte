@@ -130,6 +130,10 @@
   function handleWysiwygLinkClick(e: MouseEvent) {
     handleLinkClick(e, {
       getDocPath: () => doc.path,
+      // WYSIWYG is an editor — plain clicks must place the caret so users
+      // can edit link text. Require ⌘/Ctrl to navigate, matching VSCode /
+      // Typora / JetBrains conventions.
+      requireModifier: true,
       // No in-view anchor scroll for WYSIWYG yet — Milkdown's editor view
       // doesn't expose heading ids in the rendered DOM the same way
       // markdown-it does. `#anchor` clicks become no-ops here.

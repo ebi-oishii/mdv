@@ -11,9 +11,12 @@
   function onArticleClick(event: MouseEvent) {
     handleLinkClick(event, {
       getDocPath: () => doc.path,
-      // Diff view doesn't try to support intra-doc anchor scrolling — the
-      // two panes have separate scrollers and #anchor jumps would be
-      // ambiguous. Click stays a no-op for `#xxx`.
+      // Diff Side-by-Side is a comparison view where users want to select
+      // and copy text from either pane. Require ⌘/Ctrl to navigate so
+      // plain clicks fall through to the browser's text-selection behavior.
+      requireModifier: true,
+      // No in-view anchor scroll: the two panes have separate scrollers
+      // and a `#anchor` jump would be ambiguous.
     });
   }
 

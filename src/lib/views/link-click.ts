@@ -23,7 +23,22 @@ export type LinkClickContext = {
    * `#`). When omitted the click is treated like any other no-scheme path.
    */
   onScrollAnchor?: (id: string) => void;
+  /**
+   * When `true`, only handle clicks where the platform's primary modifier
+   * (⌘ on macOS, Ctrl elsewhere) is held. Use this for editable / selectable
+   * views (Live Preview, WYSIWYG, Diff Side-by-Side) so plain clicks still
+   * position the cursor / select text. Read-only views (Preview) leave this
+   * `false` so any click opens the link.
+   */
+  requireModifier?: boolean;
 };
+
+function modifierPressed(event: MouseEvent): boolean {
+  // Don't try to detect platform — accept either modifier. ⌘ on Mac,
+  // Ctrl on Win/Linux. Pressing the "wrong" modifier still opens the link,
+  // which is a forgiving fallback rather than a footgun.
+  return event.metaKey || event.ctrlKey;
+}
 
 /**
  * Decide what to do for an `<a>` click and execute it. Returns `true` if the
@@ -53,6 +68,11 @@ export function handleLinkClick(
   if (!anchor) return false;
   const href = anchor.getAttribute("href");
   if (!href) return false;
+
+  // Editable views require ⌘/Ctrl to navigate so a plain click can still
+  // place the cursor. Without the modifier, fall through to the host's
+  // default click behavior (cursor positioning).
+  if (ctx.requireModifier && !modifierPressed(event)) return false;
 
   // Anchor link → in-view scroll.
   if (href.startsWith("#")) {
