@@ -1,6 +1,11 @@
 <script lang="ts">
   import { settings } from "$lib/stores/settings.svelte";
-  import type { FontSize, TabWidth, Theme } from "$lib/stores/settings.svelte";
+  import type {
+    EditorTheme,
+    FontSize,
+    TabWidth,
+    Theme,
+  } from "$lib/stores/settings.svelte";
   import type { DiffSubmode, Mode } from "$lib/types";
 
   let { onClose }: { onClose: () => void } = $props();
@@ -70,6 +75,23 @@
         <option value="wysiwyg">WYSIWYG</option>
         <option value="preview">Preview</option>
         <option value="diff">Diff (when Git available)</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label for="editortheme">Editor syntax theme</label>
+      <select
+        id="editortheme"
+        value={settings.editorTheme}
+        onchange={(e) =>
+          persistChange(
+            "editorTheme",
+            (e.currentTarget as HTMLSelectElement).value as EditorTheme,
+          )}
+      >
+        <option value="github">GitHub</option>
+        <option value="solarized">Solarized</option>
+        <option value="dracula">Dracula</option>
       </select>
     </div>
 

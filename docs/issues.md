@@ -37,7 +37,7 @@
 |---|---|---|
 | ~~F1~~ | ~~WYSIWYG タスクリストのクリック toggle~~ ✓ 完了（NodeView ではなく container 経由の click handler + ProseMirror setNodeMarkup） | ★★ |
 | ~~F2~~ | ~~Settings に項目追加：Soft wrap、行番号 on/off、タブ幅、Diff debounce、Side-by-Side default~~ ✓ 完了（5 項目すべて + CM Compartment で hot-reload） | ★★ |
-| F3 | エディタ配色テーマ（GitHub Light/Dark, Solarized, Dracula 等） | ★ |
+| ~~F3~~ | ~~エディタ配色テーマ（GitHub Light/Dark, Solarized, Dracula 等）~~ ✓ 完了（GitHub / Solarized / Dracula の 3 種、Settings から切替） | ★ |
 | F4 | TUI コマンドモード拡張：`:e <path>`、`:w <path>`、`:export <fmt> <path>` | ★★ |
 | F5 | TUI 検索（`/`, `n`, `N`） | ★★ |
 | F6 | TUI ヘルプ（`?`） | ★ |
