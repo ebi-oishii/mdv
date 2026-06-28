@@ -213,4 +213,24 @@
     text-decoration: underline;
     text-underline-offset: 0.15em;
   }
+  /* Image syntax pill — Live Preview doesn't render the actual <img> inline,
+     so we collapse the entire `![alt](src)` to a small filename badge when
+     the cursor isn't on that line. When the cursor IS on the line the raw
+     syntax shows again (Decoration.mark, not replace) so the user can edit. */
+  :global(.mddiff-lp-image-pill) {
+    display: inline-block;
+    padding: 0.05em 0.5em;
+    margin: 0 0.1em;
+    background: light-dark(#eff6ff, #1e3a5f);
+    color: light-dark(#0969da, #79b8ff);
+    border: 1px solid light-dark(#bcd8fa, #2a3a55);
+    border-radius: 4px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.85em;
+    line-height: 1.4;
+    cursor: text;
+  }
+  :global(.mddiff-lp-image) {
+    color: light-dark(#0969da, #79b8ff);
+  }
 </style>
