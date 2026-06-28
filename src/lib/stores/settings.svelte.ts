@@ -22,6 +22,10 @@ export interface Settings {
   /** Diff view: which sub-mode (Highlight / Full / Side-by-Side) to land
    * on when entering Diff mode. */
   diffDefaultSubmode: DiffSubmode;
+  /** When the open file changes externally and the buffer is clean, swap to
+   * the disk content silently. With this off, every external change shows
+   * the same banner that dirty changes get, so the user always confirms. */
+  autoReload: boolean;
 }
 
 const STORAGE_KEY = "mdv-settings-v1";
@@ -35,6 +39,7 @@ const DEFAULTS: Settings = {
   tabWidth: 4,
   diffDebounceMs: 250,
   diffDefaultSubmode: "sidebyside",
+  autoReload: true,
 };
 
 function load(): Settings {
@@ -58,6 +63,7 @@ class SettingsStore {
   tabWidth = $state<TabWidth>(DEFAULTS.tabWidth);
   diffDebounceMs = $state<number>(DEFAULTS.diffDebounceMs);
   diffDefaultSubmode = $state<DiffSubmode>(DEFAULTS.diffDefaultSubmode);
+  autoReload = $state<boolean>(DEFAULTS.autoReload);
 
   /** Hydrate from localStorage. Call once at app mount on the client. */
   hydrate() {
@@ -70,6 +76,7 @@ class SettingsStore {
     this.tabWidth = s.tabWidth;
     this.diffDebounceMs = s.diffDebounceMs;
     this.diffDefaultSubmode = s.diffDefaultSubmode;
+    this.autoReload = s.autoReload;
   }
 
   persist() {
@@ -83,6 +90,7 @@ class SettingsStore {
       tabWidth: this.tabWidth,
       diffDebounceMs: this.diffDebounceMs,
       diffDefaultSubmode: this.diffDefaultSubmode,
+      autoReload: this.autoReload,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
   }
@@ -96,6 +104,7 @@ class SettingsStore {
     this.tabWidth = DEFAULTS.tabWidth;
     this.diffDebounceMs = DEFAULTS.diffDebounceMs;
     this.diffDefaultSubmode = DEFAULTS.diffDefaultSubmode;
+    this.autoReload = DEFAULTS.autoReload;
     this.persist();
   }
 }
