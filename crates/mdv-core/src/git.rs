@@ -252,9 +252,13 @@ pub fn list_bases(file: &Path, current: Option<&str>) -> Result<Vec<BaseOption>,
         }
     }
 
+    // Walk depth of 50 (was 15). At 15, a stretch of commits that didn't
+    // touch the file would push the actual file-changing commits out of the
+    // window, making them invisible in the picker. 50 covers most everyday
+    // history while keeping the work bounded.
     if let Ok(mut walk) = repo.revwalk() {
         let _ = walk.push_head();
-        for oid_res in walk.take(15) {
+        for oid_res in walk.take(50) {
             let Ok(oid) = oid_res else { continue };
             let Ok(commit) = repo.find_commit(oid) else { continue };
             let short = format!("{:.7}", oid);
