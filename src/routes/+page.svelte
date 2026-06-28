@@ -815,32 +815,6 @@
     {/if}
   {/snippet}
 
-  <!-- Sub-mode chip floats top-left of the primary pane so the user can
-       toggle Source ↔ Live Preview (or WYSIWYG ↔ Preview) without going
-       through the menu. Hidden in Diff group (which has its own submode
-       bar) and in history view (output is locked to Preview). Also hidden
-       in fullscreen so it doesn't fight with the title overlay. -->
-  {#if !doc.history && !isFullscreen && currentGroup !== "diff"}
-    {@const main = GROUP_MAIN[currentGroup]}
-    {@const sub = GROUP_SUB[currentGroup]}
-    {#if sub}
-      <div class="submode-chip" role="tablist" aria-label="View sub-mode">
-        <button
-          role="tab"
-          aria-selected={mode === main}
-          class:active={mode === main}
-          onclick={() => setMode(main)}
-        >{modeLabel(main)}</button>
-        <button
-          role="tab"
-          aria-selected={mode === sub}
-          class:active={mode === sub}
-          onclick={() => setMode(sub)}
-        >{modeLabel(sub)}</button>
-      </div>
-    {/if}
-  {/if}
-
   <!-- ☰ menu floats over the content top-right; the old dedicated header
        strip was just wasting vertical space. -->
   <div class="menu-wrap" class:open={menuOpen}>
@@ -1058,6 +1032,26 @@
       {:else}
         <section class="pane">
           {@render titlePill(mode)}
+          {#if !isFullscreen && currentGroup !== "diff"}
+            {@const main = GROUP_MAIN[currentGroup]}
+            {@const sub = GROUP_SUB[currentGroup]}
+            {#if sub}
+              <div class="pane-submode-bar" role="tablist" aria-label="View sub-mode">
+                <button
+                  role="tab"
+                  aria-selected={mode === main}
+                  class:active={mode === main}
+                  onclick={() => setMode(main)}
+                >{modeLabel(main)}</button>
+                <button
+                  role="tab"
+                  aria-selected={mode === sub}
+                  class:active={mode === sub}
+                  onclick={() => setMode(sub)}
+                >{modeLabel(sub)}</button>
+              </div>
+            {/if}
+          {/if}
           {#if mode === "source"}
             <SourceView
               text={doc.text}
@@ -1579,38 +1573,47 @@
     cursor: pointer;
   }
 
-  /* Floating sub-mode toggle (top-left). Mirrors the menu trigger on the
-     opposite side. Segmented pill with the active sub-mode highlighted.
-     (Removed by later commit; placeholder so the intermediate rebase step
-     compiles — actual deletion lands in 7589a8b.) */
-  .submode-chip {
-    position: fixed;
-    top: 0.45rem;
-    left: 0.75rem;
-    z-index: 30;
-    display: inline-flex;
-    border: 1px solid var(--mddiff-border-mute);
-    border-radius: 999px;
-    overflow: hidden;
-    background: var(--mddiff-surface-pop);
-    box-shadow: 0 2px 8px var(--mddiff-shadow);
+  /* Sub-mode toggle bar at the top of the primary pane. Thin strip; sits
+     above the view content so it never overlaps the first line. Matches
+     the Diff view's submode-bar pattern for visual consistency. */
+  .pane-submode-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 0.3rem 0.5rem;
+    /* Right padding leaves room for the floating ☰ menu (right: 0.75rem,
+       width: 34px → ~46px right reserve) so the buttons don't slide under
+       it on narrow widths. */
+    padding-right: 3.5rem;
+    border-bottom: 1px solid var(--mddiff-border-mute);
+    background: var(--mddiff-surface);
     font-size: 0.78rem;
+    flex-shrink: 0;
   }
-  .submode-chip button {
+  .pane-submode-bar button {
     background: transparent;
-    border: 0;
-    padding: 0.3rem 0.85rem;
+    border: 1px solid var(--mddiff-border-mute);
+    padding: 0.2rem 0.85rem;
     font: inherit;
     color: var(--mddiff-text-mute);
     cursor: pointer;
     line-height: 1.2;
   }
-  .submode-chip button:hover:not(.active) {
-    color: var(--mddiff-text);
+  .pane-submode-bar button:first-child {
+    border-radius: 999px 0 0 999px;
   }
-  .submode-chip button.active {
+  .pane-submode-bar button:last-child {
+    border-radius: 0 999px 999px 0;
+    border-left: 0;
+  }
+  .pane-submode-bar button:hover:not(.active) {
+    color: var(--mddiff-text);
+    background: var(--mddiff-surface-hi);
+  }
+  .pane-submode-bar button.active {
     background: var(--mddiff-accent-bg);
     color: var(--mddiff-accent-fg);
+    border-color: var(--mddiff-accent);
   }
 
   .pane-mode-bar {
