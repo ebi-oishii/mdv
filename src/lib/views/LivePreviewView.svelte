@@ -12,11 +12,17 @@
   import { useCmFind } from "./use-find.svelte";
   import { attachScrollTracker, type ScrollTracker } from "./scroll-tracker";
   import { restoreCmToLine } from "./cm-editor";
+  import { imagePaste } from "./image-paste";
 
   let {
     text,
     onchange,
-  }: { text: string; onchange: (t: string) => void } = $props();
+    onerror,
+  }: {
+    text: string;
+    onchange: (t: string) => void;
+    onerror?: (msg: string) => void;
+  } = $props();
 
   let container: HTMLDivElement;
   let view: EditorView | null = null;
@@ -46,6 +52,7 @@
         history(),
         highlightActiveLine(),
         findExtension(find.syncFromData),
+        imagePaste((msg) => onerror?.(msg)),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         markdown(),
         EditorView.lineWrapping,
