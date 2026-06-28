@@ -6,6 +6,16 @@
   import FindBar from "$lib/components/FindBar.svelte";
   import { useFind } from "../use-find.svelte";
   import { createPreviewMd, renderWithLineMap } from "../markdown-render";
+  import { handleLinkClick } from "../link-click";
+
+  function onArticleClick(event: MouseEvent) {
+    handleLinkClick(event, {
+      getDocPath: () => doc.path,
+      // Diff view doesn't try to support intra-doc anchor scrolling — the
+      // two panes have separate scrollers and #anchor jumps would be
+      // ambiguous. Click stays a no-op for `#xxx`.
+    });
+  }
 
   let {
     payload,
@@ -260,7 +270,7 @@
       <span class="base-label">current buffer</span>
     </div>
     <div class="pane-scroller" bind:this={newScroller} onscroll={onNewScroll}>
-      <article class="preview">{@html newHtml}</article>
+      <article class="preview" onclick={onArticleClick} role="presentation">{@html newHtml}</article>
     </div>
   </div>
   <div class="pane">
@@ -269,7 +279,7 @@
       <span class="base-label">{baseLabel}</span>
     </div>
     <div class="pane-scroller" bind:this={oldScroller} onscroll={onOldScroll}>
-      <article class="preview">{@html oldHtml}</article>
+      <article class="preview" onclick={onArticleClick} role="presentation">{@html oldHtml}</article>
     </div>
   </div>
   <button

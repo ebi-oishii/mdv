@@ -85,6 +85,19 @@
     if (!doc.path && !doc.text) {
       mode = settings.defaultMode;
     }
+
+    // When this window was spawned from a link click in another mddiff
+    // window, the URL carries `?file=/abs/path.md`. Read + load before the
+    // user sees anything so the open document is the one they clicked.
+    try {
+      const fileParam = new URL(window.location.href).searchParams.get("file");
+      if (fileParam) {
+        const loaded = await readPath(fileParam);
+        doc.load(loaded.path, loaded.text, loaded.gitAvailable);
+      }
+    } catch (e) {
+      error = humanizeError(e, "read");
+    }
     // Native OS menu (desktop only). The Rust side emits a `menu-event`
     // with the item id; route it back into the existing handlers so the
     // top menu and the in-app ☰ menu share behavior.
