@@ -7,6 +7,8 @@
   import { livePreviewExtension } from "./livepreview";
   import { doc } from "$lib/stores/doc.svelte";
   import { mdvCmTheme } from "./cm-theme";
+  import FindBar from "$lib/components/FindBar.svelte";
+  import { CmFindState, findExtension } from "./find-cm.svelte";
 
   let {
     text,
@@ -33,12 +35,15 @@
     scrollTimer = setTimeout(captureTopLine, 80);
   }
 
+  const find = new CmFindState();
+
   onMount(() => {
     const state = EditorState.create({
       doc: text,
       extensions: [
         history(),
         highlightActiveLine(),
+        findExtension(find.syncFromData),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         markdown(),
         EditorView.lineWrapping,
@@ -55,6 +60,11 @@
     });
     view = new EditorView({ state, parent: container });
     lastEmitted = text;
+    find.bind(view);
+    window.addEventListener("keydown", find.onKeydown);
+
+    // Focus on mount so the caret is visible immediately on mode switch.
+    view.focus();
 
     view.scrollDOM.addEventListener("scroll", onScroll, { passive: true });
 
@@ -69,6 +79,8 @@
   });
 
   onDestroy(() => {
+    window.removeEventListener("keydown", find.onKeydown);
+    find.destroy();
     if (scrollTimer) clearTimeout(scrollTimer);
     captureTopLine();
     view?.scrollDOM.removeEventListener("scroll", onScroll);
@@ -83,9 +95,31 @@
       });
     }
   });
+
+  $effect(() => {
+    void find.query;
+    void find.open;
+    find.refresh();
+  });
 </script>
 
 <div bind:this={container} class="live"></div>
+{#if find.open}
+  <FindBar
+    bind:query={find.query}
+    bind:replaceQuery={find.replaceQuery}
+    bind:replaceVisible={find.replaceVisible}
+    matchCount={find.matchCount}
+    currentIndex={find.currentIndex}
+    focusVersion={find.focusVersion}
+    enableReplace={true}
+    onnext={find.next}
+    onprev={find.prev}
+    onreplace={find.replace}
+    onreplaceAll={find.replaceAll}
+    onclose={find.close}
+  />
+{/if}
 
 <style>
   .live {

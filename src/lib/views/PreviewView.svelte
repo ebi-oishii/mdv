@@ -4,6 +4,8 @@
   import DOMPurify from "dompurify";
   import taskLists from "markdown-it-task-lists";
   import { doc } from "$lib/stores/doc.svelte";
+  import FindBar from "$lib/components/FindBar.svelte";
+  import { FindState } from "./find.svelte";
 
   let { text }: { text: string } = $props();
 
@@ -88,7 +90,11 @@
     scroller.scrollTop = target.offsetTop;
   }
 
+  const find = new FindState();
+
   onMount(() => {
+    find.bind(scroller);
+    window.addEventListener("keydown", find.onKeydown);
     // Wait one frame for the rendered HTML to land in the DOM.
     const line = doc.currentLine;
     requestAnimationFrame(() => {
@@ -100,9 +106,21 @@
   });
 
   onDestroy(() => {
+    window.removeEventListener("keydown", find.onKeydown);
+    find.destroy();
     if (scrollTimer) clearTimeout(scrollTimer);
     captureTopLine();
     scroller?.removeEventListener("scroll", onScroll);
+  });
+
+  // Re-apply find when query or rendered html changes (e.g. file reloaded
+  // externally — {@html ...} replaces children and the previous marks are
+  // gone with the old DOM).
+  $effect(() => {
+    void html;
+    void find.query;
+    void find.open;
+    find.refresh();
   });
 </script>
 
@@ -111,6 +129,17 @@
     {@html html}
   </article>
 </div>
+{#if find.open}
+  <FindBar
+    bind:query={find.query}
+    matchCount={find.matchCount}
+    currentIndex={find.currentIndex}
+    focusVersion={find.focusVersion}
+    onnext={find.next}
+    onprev={find.prev}
+    onclose={find.close}
+  />
+{/if}
 
 <style>
   .preview-scroller {

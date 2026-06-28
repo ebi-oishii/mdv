@@ -7,6 +7,8 @@
   import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
   import { doc } from "$lib/stores/doc.svelte";
   import { mdvCmTheme } from "./cm-theme";
+  import FindBar from "$lib/components/FindBar.svelte";
+  import { CmFindState, findExtension } from "./find-cm.svelte";
 
   let {
     text,
@@ -35,6 +37,8 @@
     scrollTimer = setTimeout(captureTopLine, 80);
   }
 
+  const find = new CmFindState();
+
   onMount(() => {
     const state = EditorState.create({
       doc: text,
@@ -43,6 +47,7 @@
         lineNumbers(),
         highlightActiveLine(),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        findExtension(find.syncFromData),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         markdown(),
         EditorView.lineWrapping,
@@ -58,6 +63,12 @@
     });
     view = new EditorView({ state, parent: container });
     lastEmitted = text;
+    find.bind(view);
+    window.addEventListener("keydown", find.onKeydown);
+
+    // Move focus into the editor so the caret is visible immediately on mode
+    // switch. Without this the user sees no caret on entry to the view.
+    view.focus();
 
     // Track scroll continuously so doc.currentLine stays fresh regardless of
     // unmount timing. Svelte 5's onDestroy can fire after the DOM has been
@@ -79,6 +90,8 @@
   });
 
   onDestroy(() => {
+    window.removeEventListener("keydown", find.onKeydown);
+    find.destroy();
     if (scrollTimer) clearTimeout(scrollTimer);
     // Last-chance capture in case a scroll event happened in the final ~80ms
     // and the debounce hasn't fired yet. Best-effort; guarded inside.
@@ -95,9 +108,31 @@
       });
     }
   });
+
+  $effect(() => {
+    void find.query;
+    void find.open;
+    find.refresh();
+  });
 </script>
 
 <div bind:this={container} class="source"></div>
+{#if find.open}
+  <FindBar
+    bind:query={find.query}
+    bind:replaceQuery={find.replaceQuery}
+    bind:replaceVisible={find.replaceVisible}
+    matchCount={find.matchCount}
+    currentIndex={find.currentIndex}
+    focusVersion={find.focusVersion}
+    enableReplace={true}
+    onnext={find.next}
+    onprev={find.prev}
+    onreplace={find.replace}
+    onreplaceAll={find.replaceAll}
+    onclose={find.close}
+  />
+{/if}
 
 <style>
   .source {
