@@ -715,6 +715,21 @@
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+
+  // Esc exits history view. Only attaches the listener while history is
+  // active so we don't intercept Esc in find bars / CodeMirror etc. The
+  // menu's own Escape handler short-circuits earlier (when menuOpen).
+  $effect(() => {
+    if (!doc.history) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (menuOpen) return;
+      e.preventDefault();
+      doc.exitHistory();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 </script>
 
 <svelte:head>
@@ -806,6 +821,18 @@
             <span>{i18n.t("outline.toggle")}</span>
             <kbd>{MOD}{SHIFT}O</kbd>
           </button>
+          {#if doc.history}
+            <button
+              role="menuitem"
+              onclick={() => {
+                doc.exitHistory();
+                closeMenu();
+              }}
+            >
+              <span>{i18n.t("history.exit")}</span>
+              <kbd>Esc</kbd>
+            </button>
+          {/if}
           <div class="sep"></div>
           <button role="menuitem" onclick={open}>
             <span>{i18n.t("menu.open")}</span><kbd>{MOD}O</kbd>

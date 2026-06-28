@@ -65,7 +65,7 @@
         class="close"
         onclick={() => doc.exitHistory()}
         aria-label={i18n.t("history.exit")}
-        title={i18n.t("history.exit")}
+        title={`${i18n.t("history.exit")} (Esc)`}
       >×</button>
     </div>
   </div>
