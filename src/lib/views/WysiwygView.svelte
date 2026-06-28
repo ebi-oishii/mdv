@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import MarkdownIt from "markdown-it";
-  import { Editor, defaultValueCtx, rootCtx } from "@milkdown/kit/core";
+  import { Editor, defaultValueCtx, editorViewCtx, rootCtx } from "@milkdown/kit/core";
   import { commonmark } from "@milkdown/kit/preset/commonmark";
   import { gfm } from "@milkdown/kit/preset/gfm";
   import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
@@ -110,6 +110,47 @@
   // every text update.
   const find = new FindState();
 
+  // Click anywhere on the rendered `☐` / `☑` glyph (drawn via .cm-line's
+  // ::before, so the click target is the `<li>` itself within ~24px from
+  // its left edge) toggles the task's checked state on the underlying
+  // ProseMirror node. The markdown-updated listener propagates the change
+  // to doc.text and the dirty flag.
+  function handleTaskClick(e: MouseEvent) {
+    if (!editor) return;
+    const target = e.target as HTMLElement;
+    const li = target.closest<HTMLElement>('li[data-item-type="task"]');
+    if (!li) return;
+    // Limit to the left ~24px (matches the ::before width) so clicks on
+    // task body text still place the caret as usual.
+    const rect = li.getBoundingClientRect();
+    if (e.clientX - rect.left > 24) return;
+    e.preventDefault();
+    editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      const pos = view.posAtDOM(li, 0);
+      if (pos < 0) return;
+      const resolved = view.state.doc.resolve(pos);
+      // Milkdown's GFM preset doesn't introduce a separate `task_list_item`
+      // node — it extends the base `list_item` schema with a nullable
+      // `checked` attr. A regular bullet/ordered item has `checked === null`;
+      // a task item has `checked: true | false`. Walk ancestors and toggle
+      // the first `list_item` that has a non-null `checked`.
+      for (let d = resolved.depth; d >= 0; d--) {
+        const node = resolved.node(d);
+        if (node.type.name === "list_item" && node.attrs.checked != null) {
+          const nodePos = resolved.before(d);
+          view.dispatch(
+            view.state.tr.setNodeMarkup(nodePos, null, {
+              ...node.attrs,
+              checked: !node.attrs.checked,
+            }),
+          );
+          return;
+        }
+      }
+    });
+  }
+
   onMount(async () => {
     find.bind(container);
     window.addEventListener("keydown", find.onKeydown);
@@ -137,6 +178,8 @@
       .use(gfm)
       .use(listener)
       .create();
+
+    container.addEventListener("click", handleTaskClick);
 
     // After load, query Milkdown's own serialization of the doc to detect
     // round-trip normalization (e.g. `*foo*` <-> `_foo_`, link reference
@@ -173,6 +216,7 @@
   });
 
   onDestroy(() => {
+    container?.removeEventListener("click", handleTaskClick);
     window.removeEventListener("keydown", find.onKeydown);
     find.destroy();
     if (scrollTimer) clearTimeout(scrollTimer);
@@ -319,6 +363,7 @@
     color: light-dark(#888, #888);
     font-size: 1.05em;
     vertical-align: -1px;
+    cursor: pointer;
   }
   :global(.wys li[data-item-type="task"][data-checked="true"]::before) {
     content: "☑ ";
