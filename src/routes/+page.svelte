@@ -22,6 +22,7 @@
   } from "$lib/ipc/fs";
   import { humanizeError } from "$lib/errors";
   import { i18n } from "$lib/i18n/index.svelte";
+  import { useModifierCursorTracking } from "$lib/views/modifier-cursor.svelte";
   import LargeFileWarning from "$lib/components/LargeFileWarning.svelte";
   import { gitIsRepo } from "$lib/ipc/git";
   import {
@@ -78,6 +79,10 @@
   let externalChangeUnlisten: UnlistenFn | null = null;
   let closeUnlisten: UnlistenFn | null = null;
   let isFullscreen = $state(false);
+
+  // Toggle root `.mddiff-modifier-down` while ⌘ / Ctrl is held so editable
+  // views can show pointer cursor over links.
+  useModifierCursorTracking();
 
   onMount(async () => {
     settings.hydrate();
@@ -1249,5 +1254,18 @@
   }
   main.split > .pane + .pane {
     border-left: 1px solid var(--mddiff-border);
+  }
+
+  /* Show the "follow link" affordance while the user is holding ⌘ / Ctrl.
+     Applied to every view that has interactive links — Preview's plain-click
+     already opens, but the pointer-on-modifier still helps confirm the link
+     is live. Live Preview's link decoration is the `mddiff-lp-link` span.
+     Source view's plain link text isn't decorated, so no cursor change there
+     (would require a custom CM mark — TODO). */
+  :global(:root.mddiff-modifier-down) :global(.preview a),
+  :global(:root.mddiff-modifier-down) :global(.wys a),
+  :global(:root.mddiff-modifier-down) :global(.sbs a),
+  :global(:root.mddiff-modifier-down) :global(.mddiff-lp-link) {
+    cursor: pointer;
   }
 </style>

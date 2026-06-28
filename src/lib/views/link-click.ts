@@ -33,11 +33,68 @@ export type LinkClickContext = {
   requireModifier?: boolean;
 };
 
-function modifierPressed(event: MouseEvent): boolean {
+export function modifierPressed(event: MouseEvent | KeyboardEvent): boolean {
   // Don't try to detect platform — accept either modifier. ⌘ on Mac,
   // Ctrl on Win/Linux. Pressing the "wrong" modifier still opens the link,
   // which is a forgiving fallback rather than a footgun.
   return event.metaKey || event.ctrlKey;
+}
+
+/**
+ * Apply the same dispatch table as {@link handleLinkClick} but starting from
+ * an already-extracted href. Used by the CodeMirror extension (Source / Live
+ * Preview) where there's no `<a>` element to crawl — only a syntax-tree
+ * Link node and a doc-text slice.
+ *
+ * Caller is responsible for preventDefault (or whatever editor-event suppression
+ * makes sense).
+ */
+export function routeHref(href: string, ctx: LinkClickContext): void {
+  if (href.startsWith("#")) {
+    ctx.onScrollAnchor?.(href.slice(1));
+    return;
+  }
+
+  const schemeMatch = href.match(/^([a-z][a-z0-9+.-]*):/i);
+  if (schemeMatch) {
+    const scheme = schemeMatch[1].toLowerCase();
+    if (scheme === "asset") return; // internal images — nothing to do
+
+    if (scheme === "file") {
+      const decoded = decodeFileUrl(href);
+      if (decoded && isTextFile(decoded)) {
+        void openInNewWindow(decoded);
+      } else {
+        void openUrl(href).catch((e) =>
+          console.error("[link-click] opener failed:", e),
+        );
+      }
+      return;
+    }
+
+    void openUrl(href).catch((e) =>
+      console.error("[link-click] opener failed:", e),
+    );
+    return;
+  }
+
+  if (!isRelativePath(href)) {
+    void openUrl(`file://${href}`).catch((e) =>
+      console.error("[link-click] opener failed:", e),
+    );
+    return;
+  }
+
+  const docPath = ctx.getDocPath();
+  if (!docPath) return;
+  const abs = resolveRelativeToDoc(href, docPath);
+  if (isTextFile(abs)) {
+    void openInNewWindow(abs);
+  } else {
+    void openUrl(`file://${abs}`).catch((e) =>
+      console.error("[link-click] opener failed:", e),
+    );
+  }
 }
 
 /**
@@ -74,70 +131,13 @@ export function handleLinkClick(
   // default click behavior (cursor positioning).
   if (ctx.requireModifier && !modifierPressed(event)) return false;
 
-  // Anchor link → in-view scroll.
-  if (href.startsWith("#")) {
-    event.preventDefault();
-    ctx.onScrollAnchor?.(href.slice(1));
-    return true;
-  }
-
-  // Scheme-prefixed URL.
-  const schemeMatch = href.match(/^([a-z][a-z0-9+.-]*):/i);
-  if (schemeMatch) {
-    const scheme = schemeMatch[1].toLowerCase();
-    // Internal: images / assets. Let the webview load them normally.
-    if (scheme === "asset") return false;
-
-    event.preventDefault();
-
-    if (scheme === "file") {
-      // `file://` URLs to text files open in mddiff; everything else
-      // hands off to the OS so PDFs / images / app:// links resolve
-      // through the user's default app.
-      const decoded = decodeFileUrl(href);
-      if (decoded && isTextFile(decoded)) {
-        void openInNewWindow(decoded);
-      } else {
-        void openUrl(href).catch((e) =>
-          console.error("[link-click] opener failed:", e),
-        );
-      }
-      return true;
-    }
-
-    // Everything else (http/https/mailto/tel/sms/ftp/...) → OS opener.
-    void openUrl(href).catch((e) =>
-      console.error("[link-click] opener failed:", e),
-    );
-    return true;
-  }
-
-  // No scheme: relative or absolute path. Only relative paths are anchored
-  // to the open document.
-  if (!isRelativePath(href)) {
-    // Bare absolute path (e.g. `/etc/hosts`). Treat as file:// → opener.
-    event.preventDefault();
-    void openUrl(`file://${href}`).catch((e) =>
-      console.error("[link-click] opener failed:", e),
-    );
-    return true;
-  }
+  // asset: URLs are internal (images) — let the webview handle them so the
+  // image preview / WYSIWYG embed still loads. routeHref also short-circuits
+  // on asset:, but we need to skip the preventDefault below.
+  if (href.startsWith("asset:")) return false;
 
   event.preventDefault();
-  const docPath = ctx.getDocPath();
-  if (!docPath) {
-    // No anchor for the relative path — best effort: do nothing. The user
-    // gets no link action but no surprise either.
-    return true;
-  }
-  const abs = resolveRelativeToDoc(href, docPath);
-  if (isTextFile(abs)) {
-    void openInNewWindow(abs);
-  } else {
-    void openUrl(`file://${abs}`).catch((e) =>
-      console.error("[link-click] opener failed:", e),
-    );
-  }
+  routeHref(href, ctx);
   return true;
 }
 
