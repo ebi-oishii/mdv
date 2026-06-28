@@ -17,6 +17,31 @@
   let view: EditorView | null = null;
   let lastEmitted = "";
 
+  // Active-line extension overlay: paints `--mdv-active-line-bg` across the
+  // full .source width at the current line's y. The right 3rem padding
+  // strip lies outside cm-editor, so without this the highlight visibly
+  // stops 3rem before the viewport edge. We position the .source::before
+  // by writing CSS vars (--mdv-source-active-y / --mdv-source-active-h);
+  // the actual paint happens in style {}.
+  function updateActiveLine() {
+    if (!view || !container) return;
+    try {
+      const head = view.state.selection.main.head;
+      const block = view.lineBlockAt(head);
+      const scrollerRect = view.scrollDOM.getBoundingClientRect();
+      const sourceRect = container.getBoundingClientRect();
+      // block.top is in CM's pre-scroll coordinates; subtract scrollTop to
+      // get the rendered y inside the scroller, then translate into
+      // .source's local coordinate space.
+      const yInScroller = block.top - view.scrollDOM.scrollTop;
+      const yInSource = scrollerRect.top + yInScroller - sourceRect.top;
+      container.style.setProperty("--mdv-source-active-y", `${yInSource}px`);
+      container.style.setProperty("--mdv-source-active-h", `${block.height}px`);
+    } catch {
+      // CM might not be ready or the editor is being torn down.
+    }
+  }
+
   onMount(() => {
     const state = EditorState.create({
       doc: text,
@@ -35,11 +60,18 @@
             lastEmitted = next;
             onchange(next);
           }
+          if (u.selectionSet || u.docChanged || u.geometryChanged) {
+            updateActiveLine();
+          }
         }),
       ],
     });
     view = new EditorView({ state, parent: container });
     lastEmitted = text;
+    // Paint the extension once on mount; future updates come from the
+    // updateListener and the scrollDOM scroll handler below.
+    requestAnimationFrame(updateActiveLine);
+    view.scrollDOM.addEventListener("scroll", updateActiveLine, { passive: true });
 
     // Restore scroll position from DocStore so mode switches stay in place.
     // Defer one frame so CodeMirror has measured the layout.
@@ -54,6 +86,7 @@
   });
 
   onDestroy(() => {
+    view?.scrollDOM.removeEventListener("scroll", updateActiveLine);
     // Save topmost visible source line before tearing down so the next mode
     // can scroll there. posAtCoords is more reliable than lineBlockAtHeight
     // when the editor has padding/margins.
@@ -111,5 +144,24 @@
   :global(:root:not([data-fullscreen])) .source {
     padding-right: 3rem;
     box-sizing: border-box;
+    /* Anchor the active-line extension ::before to .source. */
+    position: relative;
+  }
+  /* Active-line extension: paints the highlight color across the full
+     .source width (including the 3rem padding strip) at the current
+     line's y. CM's own .cm-activeLine still paints inside cm-editor,
+     and cm-editor's solid background sits *above* this ::before (later
+     in document order, same stacking context), so the bar is visible
+     only where cm-editor doesn't cover — i.e. the right 3rem strip.
+     Position vars are written by updateActiveLine() in the script. */
+  :global(:root:not([data-fullscreen])) .source::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: var(--mdv-source-active-y, -9999px);
+    height: var(--mdv-source-active-h, 0);
+    background: var(--mdv-active-line-bg);
+    pointer-events: none;
   }
 </style>

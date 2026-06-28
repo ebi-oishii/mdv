@@ -39,8 +39,9 @@ export const mdvCmTheme = EditorView.theme({
     color: "var(--mdv-text-subtle)",
   },
   ".cm-activeLine": {
-    backgroundColor:
-      "color-mix(in srgb, var(--mdv-accent) 6%, transparent)",
+    // Shared with .source::before's active-line extension overlay so the
+    // strip outside cm-editor stays color-matched. Defined in +page.svelte.
+    backgroundColor: "var(--mdv-active-line-bg)",
   },
   ".cm-activeLineGutter": {
     backgroundColor:
