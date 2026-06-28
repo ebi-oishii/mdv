@@ -1,0 +1,19 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    mddiff logo (v0.1).
+    Concept: a bold monospace 'M' over two diff bars (added/removed) to
+    signal "Markdown editor with first-class diff". Stays readable at 32px.
+  -->
+  <rect width="1024" height="1024" rx="192" ry="192" fill="#0f172a"/>
+  <text
+    x="512"
+    y="700"
+    font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
+    font-weight="900"
+    font-size="640"
+    text-anchor="middle"
+    fill="#f8fafc"
+  >M</text>
+  <rect x="320" y="836" width="160" height="32" rx="8" fill="#22c55e"/>
+  <rect x="544" y="836" width="160" height="32" rx="8" fill="#ef4444"/>
+</svg>
