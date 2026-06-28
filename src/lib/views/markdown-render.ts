@@ -106,6 +106,13 @@ export function renderWithLineMap(
 
   return DOMPurify.sanitize(md.renderer.render(tokens, md.options, env), {
     ADD_ATTR: ["data-mddiff-line"],
+    // Default DOMPurify URI regex allows http(s)/mailto/tel/sms/cid/xmpp/ftp
+    // but blocks custom schemes. Tauri's `convertFileSrc()` returns
+    // `asset://localhost/...` URLs, which we need to keep so pasted images
+    // render. Extend the regex with `asset` while keeping the rest of the
+    // default safe list.
+    ALLOWED_URI_REGEXP:
+      /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|asset):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
   });
 }
 
