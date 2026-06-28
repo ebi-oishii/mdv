@@ -22,13 +22,17 @@
   let editor: Editor | null = null;
   let lastEmitted = "";
   let ready = $state(false);
+  let scrollTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Milkdown doesn't expose source-line positions on its rendered nodes, so we
   // reconstruct a top-level-block → source-line mapping by parsing the same
   // markdown with markdown-it. ProseMirror renders top-level doc nodes 1:1 as
   // `.ProseMirror` children, so the array index lines up with the child index.
   const lineMapMd = new MarkdownIt({ html: true, linkify: true, breaks: false });
+  let cachedSrc = "";
+  let cachedLines: number[] = [];
   function topLevelBlockLines(src: string): number[] {
+    if (src === cachedSrc) return cachedLines;
     const tokens = lineMapMd.parse(src, {});
     const lines: number[] = [];
     for (const tok of tokens) {
@@ -38,6 +42,8 @@
       if (tok.type.endsWith("_close")) continue;
       lines.push(tok.map[0] + 1);
     }
+    cachedSrc = src;
+    cachedLines = lines;
     return lines;
   }
 
@@ -65,13 +71,17 @@
   function topVisibleLine(): number | null {
     const root = proseMirrorRoot();
     if (!root || !container) return null;
-    const top = container.getBoundingClientRect().top;
+    const rect = container.getBoundingClientRect();
+    // Detached element returns a zero rect — bail to avoid clobbering
+    // currentLine with line 1.
+    if (rect.width === 0 && rect.height === 0) return null;
+    const top = rect.top;
     const children = Array.from(root.children) as HTMLElement[];
     if (children.length === 0) return null;
     let blockIndex = 0;
     for (let i = 0; i < children.length; i++) {
-      const rect = children[i].getBoundingClientRect();
-      if (rect.top >= top - 2) {
+      const cr = children[i].getBoundingClientRect();
+      if (cr.top >= top - 2) {
         blockIndex = i;
         break;
       }
@@ -79,6 +89,16 @@
     }
     const lines = topLevelBlockLines(lastEmitted || text);
     return lines[blockIndex] ?? null;
+  }
+
+  function captureTopLine() {
+    const line = topVisibleLine();
+    if (line != null) doc.currentLine = line;
+  }
+
+  function onScroll() {
+    if (scrollTimer) clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(captureTopLine, 80);
   }
 
   onMount(async () => {
@@ -124,17 +144,23 @@
     // and lastEmitted (post-normalization) is set for an accurate line map.
     const restore = doc.currentLine;
     requestAnimationFrame(() => {
-      try { scrollToLine(restore); } catch {}
+      try {
+        scrollToLine(restore);
+      } catch {}
+      // Attach scroll listener after the restore frame so the programmatic
+      // scroll doesn't race the user's first manual scroll for the debounce.
+      container?.addEventListener("scroll", onScroll, { passive: true });
     });
   });
 
   onDestroy(() => {
+    if (scrollTimer) clearTimeout(scrollTimer);
     try {
-      const line = topVisibleLine();
-      if (line != null) doc.currentLine = line;
+      captureTopLine();
     } catch {
       // DOM might already be torn down; skip silently.
     }
+    container?.removeEventListener("scroll", onScroll);
     editor?.destroy();
     editor = null;
   });
