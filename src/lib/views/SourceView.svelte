@@ -23,22 +23,36 @@
   // stops 3rem before the viewport edge. We position the .source::before
   // by writing CSS vars (--mdv-source-active-y / --mdv-source-active-h);
   // the actual paint happens in style {}.
+  //
+  // We measure the rendered .cm-activeLine element directly (instead of
+  // computing y from lineBlockAt) because CM's BlockInfo.top excludes
+  // cm-content's 4px top padding, which would offset our extension strip
+  // and make it look misaligned with the in-editor highlight.
   function updateActiveLine() {
     if (!view || !container) return;
     try {
-      const head = view.state.selection.main.head;
-      const block = view.lineBlockAt(head);
-      const scrollerRect = view.scrollDOM.getBoundingClientRect();
+      const lineEl = view.dom.querySelector(
+        ".cm-activeLine",
+      ) as HTMLElement | null;
+      if (!lineEl) {
+        // No active line (e.g. multi-line selection mid-drag) — hide the
+        // overlay by pushing it off-screen.
+        container.style.setProperty("--mdv-source-active-y", "-9999px");
+        container.style.setProperty("--mdv-source-active-h", "0");
+        return;
+      }
+      const lineRect = lineEl.getBoundingClientRect();
       const sourceRect = container.getBoundingClientRect();
-      // block.top is in CM's pre-scroll coordinates; subtract scrollTop to
-      // get the rendered y inside the scroller, then translate into
-      // .source's local coordinate space.
-      const yInScroller = block.top - view.scrollDOM.scrollTop;
-      const yInSource = scrollerRect.top + yInScroller - sourceRect.top;
-      container.style.setProperty("--mdv-source-active-y", `${yInSource}px`);
-      container.style.setProperty("--mdv-source-active-h", `${block.height}px`);
+      container.style.setProperty(
+        "--mdv-source-active-y",
+        `${lineRect.top - sourceRect.top}px`,
+      );
+      container.style.setProperty(
+        "--mdv-source-active-h",
+        `${lineRect.height}px`,
+      );
     } catch {
-      // CM might not be ready or the editor is being torn down.
+      // DOM might be mid-teardown; ignore.
     }
   }
 
