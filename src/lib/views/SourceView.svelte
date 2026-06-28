@@ -97,6 +97,15 @@
   const wrapComp = new Compartment();
   const lineNumComp = new Compartment();
   const tabSizeComp = new Compartment();
+  const spellcheckComp = new Compartment();
+
+  // Compartment-able fragment that toggles browser/OS-native spellcheck on
+  // CM's contenteditable (`.cm-content`). When off we explicitly set
+  // "false" rather than leaving the attribute absent — some browsers
+  // default to true on contenteditable.
+  function spellcheckExt(on: boolean) {
+    return EditorView.contentAttributes.of({ spellcheck: on ? "true" : "false" });
+  }
 
   onMount(() => {
     const state = EditorState.create({
@@ -117,6 +126,7 @@
         markdown(),
         wrapComp.of(settings.softWrap ? EditorView.lineWrapping : []),
         tabSizeComp.of(EditorState.tabSize.of(settings.tabWidth)),
+        spellcheckComp.of(spellcheckExt(settings.spellcheck)),
         mddiffCmTheme,
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
@@ -205,6 +215,12 @@
     if (!view) return;
     view.dispatch({
       effects: tabSizeComp.reconfigure(EditorState.tabSize.of(settings.tabWidth)),
+    });
+  });
+  $effect(() => {
+    if (!view) return;
+    view.dispatch({
+      effects: spellcheckComp.reconfigure(spellcheckExt(settings.spellcheck)),
     });
   });
 

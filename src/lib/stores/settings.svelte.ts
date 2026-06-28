@@ -33,6 +33,11 @@ export interface Settings {
   editorTheme: EditorTheme;
   /** Show the outline sidebar (TOC) on the right. Toggled by ⌘⇧O. */
   outlineOpen: boolean;
+  /** Browser/OS-native spellcheck on the editable surfaces (Source, Live
+   * Preview, WYSIWYG). Toggling persists immediately but only takes effect
+   * on view (re)mount — we don't reconfigure CM's contentAttributes
+   * dynamically. */
+  spellcheck: boolean;
 }
 
 const STORAGE_KEY = "mddiff-settings-v1";
@@ -49,6 +54,7 @@ const DEFAULTS: Settings = {
   diffDefaultSubmode: "sidebyside",
   editorTheme: "github",
   outlineOpen: false,
+  spellcheck: false,
 };
 
 function load(): Settings {
@@ -75,6 +81,7 @@ class SettingsStore {
   diffDefaultSubmode = $state<DiffSubmode>(DEFAULTS.diffDefaultSubmode);
   editorTheme = $state<EditorTheme>(DEFAULTS.editorTheme);
   outlineOpen = $state<boolean>(DEFAULTS.outlineOpen);
+  spellcheck = $state<boolean>(DEFAULTS.spellcheck);
 
   /** Hydrate from localStorage. Call once at app mount on the client. */
   hydrate() {
@@ -90,6 +97,7 @@ class SettingsStore {
     this.diffDefaultSubmode = s.diffDefaultSubmode;
     this.editorTheme = s.editorTheme;
     this.outlineOpen = s.outlineOpen;
+    this.spellcheck = s.spellcheck;
   }
 
   persist() {
@@ -106,6 +114,7 @@ class SettingsStore {
       diffDefaultSubmode: this.diffDefaultSubmode,
       editorTheme: this.editorTheme,
       outlineOpen: this.outlineOpen,
+      spellcheck: this.spellcheck,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
   }
@@ -122,6 +131,7 @@ class SettingsStore {
     this.diffDefaultSubmode = DEFAULTS.diffDefaultSubmode;
     this.editorTheme = DEFAULTS.editorTheme;
     this.outlineOpen = DEFAULTS.outlineOpen;
+    this.spellcheck = DEFAULTS.spellcheck;
     this.persist();
   }
 }

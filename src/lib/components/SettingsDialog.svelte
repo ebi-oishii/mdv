@@ -151,6 +151,18 @@
     </div>
 
     <div class="row">
+      <label for="spellcheck">{i18n.t("settings.spellcheck")}</label>
+      <input
+        id="spellcheck"
+        type="checkbox"
+        checked={settings.spellcheck}
+        onchange={(e) =>
+          persistChange("spellcheck", (e.currentTarget as HTMLInputElement).checked)}
+      />
+    </div>
+    <p class="row-hint">{i18n.t("settings.spellcheckHint")}</p>
+
+    <div class="row">
       <label for="tabwidth">{i18n.t("settings.tabWidth")}</label>
       <select
         id="tabwidth"

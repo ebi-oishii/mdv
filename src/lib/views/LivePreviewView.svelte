@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { EditorState } from "@codemirror/state";
+  import { Compartment, EditorState } from "@codemirror/state";
   import { EditorView, keymap, highlightActiveLine } from "@codemirror/view";
   import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
   import { markdown } from "@codemirror/lang-markdown";
   import { livePreviewExtension } from "./livepreview";
   import { doc } from "$lib/stores/doc.svelte";
+  import { settings } from "$lib/stores/settings.svelte";
   import { mddiffCmTheme } from "./cm-theme";
   import FindBar from "$lib/components/FindBar.svelte";
   import { findExtension } from "./find-cm.svelte";
@@ -29,6 +30,13 @@
   let view: EditorView | null = null;
   let lastEmitted = "";
   let scrollTracker: ScrollTracker | null = null;
+
+  // Browser/OS-native spellcheck on CM's contenteditable. Compartment-able
+  // so the Settings toggle takes effect without a view rebuild.
+  const spellcheckComp = new Compartment();
+  function spellcheckExt(on: boolean) {
+    return EditorView.contentAttributes.of({ spellcheck: on ? "true" : "false" });
+  }
 
   function topVisibleLine(): number | null {
     if (!view) return null;
@@ -58,6 +66,7 @@
         keymap.of([...defaultKeymap, ...historyKeymap]),
         markdown(),
         EditorView.lineWrapping,
+        spellcheckComp.of(spellcheckExt(settings.spellcheck)),
         mddiffCmTheme,
         livePreviewExtension,
         EditorView.updateListener.of((u) => {
@@ -107,6 +116,13 @@
     if (line == null || !view) return;
     restoreCmToLine(view, line);
     doc.pendingScrollLine = null;
+  });
+
+  $effect(() => {
+    if (!view) return;
+    view.dispatch({
+      effects: spellcheckComp.reconfigure(spellcheckExt(settings.spellcheck)),
+    });
   });
 
 </script>

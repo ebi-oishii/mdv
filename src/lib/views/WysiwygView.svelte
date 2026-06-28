@@ -12,6 +12,7 @@
   import { rewriteRelativeImageSrc } from "./image-path";
   import { handleLinkClick } from "./link-click";
   import { doc } from "$lib/stores/doc.svelte";
+  import { settings } from "$lib/stores/settings.svelte";
 
   let {
     text,
@@ -299,6 +300,17 @@
       } catch {}
       doc.pendingScrollLine = null;
     });
+  });
+
+  // Browser/OS-native spellcheck on the .ProseMirror contenteditable.
+  // Milkdown doesn't expose a first-class API for editor-host attributes,
+  // so we set it directly. Gate on `ready` so we wait for the element
+  // (Milkdown creates .ProseMirror inside our container only after init).
+  $effect(() => {
+    const on = settings.spellcheck;
+    if (!ready) return;
+    const pm = container?.querySelector(".ProseMirror") as HTMLElement | null;
+    if (pm) pm.setAttribute("spellcheck", on ? "true" : "false");
   });
 
 </script>
