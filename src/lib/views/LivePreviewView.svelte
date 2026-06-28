@@ -16,6 +16,22 @@
   let container: HTMLDivElement;
   let view: EditorView | null = null;
   let lastEmitted = "";
+  let scrollTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function captureTopLine() {
+    if (!view) return;
+    try {
+      const rect = view.scrollDOM.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return;
+      const pos = view.posAtCoords({ x: rect.left + 8, y: rect.top + 4 });
+      if (pos != null) doc.currentLine = view.state.doc.lineAt(pos).number;
+    } catch {}
+  }
+
+  function onScroll() {
+    if (scrollTimer) clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(captureTopLine, 80);
+  }
 
   onMount(() => {
     const state = EditorState.create({
@@ -40,6 +56,8 @@
     view = new EditorView({ state, parent: container });
     lastEmitted = text;
 
+    view.scrollDOM.addEventListener("scroll", onScroll, { passive: true });
+
     const restore = doc.currentLine;
     requestAnimationFrame(() => {
       if (!view) return;
@@ -51,17 +69,9 @@
   });
 
   onDestroy(() => {
-    if (view) {
-      try {
-        const rect = view.scrollDOM.getBoundingClientRect();
-        const pos = view.posAtCoords({ x: rect.left + 8, y: rect.top + 4 });
-        if (pos != null) {
-          doc.currentLine = view.state.doc.lineAt(pos).number;
-        }
-      } catch {
-        // best-effort
-      }
-    }
+    if (scrollTimer) clearTimeout(scrollTimer);
+    captureTopLine();
+    view?.scrollDOM.removeEventListener("scroll", onScroll);
     view?.destroy();
   });
 
@@ -112,6 +122,11 @@
     max-width: 92ch;
     margin: 0 auto;
     padding: 2rem 3rem 4rem;
+  }
+  /* In fullscreen the title overlay sits over the top of the canvas;
+     widen the top padding to clear it. */
+  :global(:root[data-fullscreen] .live .cm-content) {
+    padding-top: 2.5rem;
   }
   :global(.live .cm-line) {
     padding: 0;

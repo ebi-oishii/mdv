@@ -21,7 +21,7 @@
 
 | # | 内容 | 優先 |
 |---|---|---|
-| P1 | Source ↔ Preview ↔ Live Preview ↔ WYSIWYG の切替時にスクロール位置を維持 | ★★★ |
+| ~~P1~~ | ~~Source ↔ Preview ↔ Live Preview ↔ WYSIWYG の切替時にスクロール位置を維持~~ ✓ 完了 | ★★★ |
 | ~~P2~~ | ~~GUI Side-by-Side のペイン間スクロール同期~~ ✓ 完了（toggle 付き） | ★★ |
 | P3 | TUI Side-by-Side の左右ペイン独立スクロール | ★★ |
 | P4 | エラーハンドリング詳細化（ファイル消失検知、再読込ボタン） | ★★ |

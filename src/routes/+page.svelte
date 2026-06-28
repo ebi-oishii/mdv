@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { confirm } from "@tauri-apps/plugin-dialog";
   import { doc } from "$lib/stores/doc.svelte";
   import {
     pickAndReadFile,
@@ -48,6 +49,11 @@
   let externalChange = $state<ExternalChangeState | null>(null);
   let reloadFlash = $state<string | null>(null);
 
+  // Split view: render the same document side-by-side with two independent
+  // modes. Common case: Source on the left, Preview on the right.
+  let splitMode = $state(false);
+  let rightMode = $state<Mode>("preview");
+
   // Detect Mac at runtime for shortcut hint glyphs. Non-Mac users see "Ctrl+"
   // instead of ⌘ so the menu hint actually matches the key they need to press.
   const isMac =
@@ -58,6 +64,7 @@
   let menuUnlisten: UnlistenFn | null = null;
   let resizeUnlisten: UnlistenFn | null = null;
   let externalChangeUnlisten: UnlistenFn | null = null;
+  let closeUnlisten: UnlistenFn | null = null;
   let isFullscreen = $state(false);
 
   onMount(async () => {
@@ -98,6 +105,18 @@
           isFullscreen = await win.isFullscreen();
         } catch {}
       });
+      // Confirm before discarding unsaved edits on window close (red ×, ⌘Q,
+      // taskbar close, etc.). preventDefault keeps the window alive until the
+      // user makes a choice; destroy() bypasses the listener on confirm.
+      closeUnlisten = await win.onCloseRequested(async (event) => {
+        if (!doc.dirty) return;
+        event.preventDefault();
+        const ok = await confirm(
+          "There are unsaved changes. Close without saving?",
+          { title: "Unsaved changes", kind: "warning", okLabel: "Discard & close", cancelLabel: "Cancel" },
+        );
+        if (ok) await win.destroy();
+      });
     } catch {
       // not in Tauri
     }
@@ -107,6 +126,7 @@
     menuUnlisten?.();
     resizeUnlisten?.();
     externalChangeUnlisten?.();
+    closeUnlisten?.();
     // Best-effort stop; if Tauri's tear-down already killed the watcher this
     // will just be a no-op.
     void stopWatch().catch(() => {});
@@ -251,6 +271,18 @@
     doc.pendingDiskCompare = externalChange.diskText;
     mode = "diff";
   }
+
+  // Surface fullscreen state to CSS so view-specific rules (e.g. SourceView's
+  // top padding to clear the floating title overlay) can scope themselves.
+  $effect(() => {
+    if (typeof document === "undefined") return;
+    if (isFullscreen) {
+      document.documentElement.dataset.fullscreen = "true";
+    } else {
+      delete document.documentElement.dataset.fullscreen;
+    }
+  });
+
 
   // Push filename + dirty + mode into the OS window title bar (Mac top bar,
   // Win/Linux window chrome). Quiet failure when not running under Tauri.
@@ -421,6 +453,16 @@
     mode = m;
   }
 
+  function setRightMode(m: Mode) {
+    if (m === "diff" && !doc.gitAvailable) return;
+    rightMode = m;
+  }
+
+  function toggleSplit() {
+    splitMode = !splitMode;
+    closeMenu();
+  }
+
   function basename(p: string | null): string {
     if (!p) return "(untitled)";
     const parts = p.split(/[\\/]/);
@@ -432,6 +474,9 @@
     // doesn't — let that case stay in Diff even on non-Git files.
     if (mode === "diff" && !doc.gitAvailable && doc.pendingDiskCompare == null) {
       mode = "source";
+    }
+    if (rightMode === "diff" && !doc.gitAvailable) {
+      rightMode = "preview";
     }
   });
 
@@ -492,6 +537,9 @@
       } else if (e.key === ",") {
         e.preventDefault();
         openSettings();
+      } else if (e.key === "\\") {
+        e.preventDefault();
+        toggleSplit();
       }
     }
     window.addEventListener("keydown", onKey);
@@ -548,6 +596,11 @@
               <kbd>{MOD}{m.key}</kbd>
             </button>
           {/each}
+          <div class="sep"></div>
+          <button role="menuitem" onclick={toggleSplit}>
+            <span>{splitMode ? "Close split" : "Split right"}</span>
+            <kbd>{MOD}\</kbd>
+          </button>
           <div class="sep"></div>
           <button role="menuitem" onclick={open}>
             <span>Open…</span><kbd>{MOD}O</kbd>
@@ -626,21 +679,57 @@
       <button class="dismiss" aria-label="Dismiss" onclick={() => (normalization = null)}>×</button>
     </div>
   {/if}
-  <main>
-    {#if mode === "source"}
+  {#snippet renderView(m: Mode, withNormalizeBanner: boolean)}
+    {#if m === "source"}
       <SourceView text={doc.text} onchange={(t) => doc.setText(t)} />
-    {:else if mode === "live"}
+    {:else if m === "live"}
       <LivePreviewView text={doc.text} onchange={(t) => doc.setText(t)} />
-    {:else if mode === "wysiwyg"}
+    {:else if m === "wysiwyg"}
       <WysiwygView
         text={doc.text}
         onchange={(t) => doc.setText(t)}
-        onnormalize={handleNormalize}
+        onnormalize={withNormalizeBanner ? handleNormalize : () => {}}
       />
-    {:else if mode === "preview"}
+    {:else if m === "preview"}
       <PreviewView text={doc.text} />
     {:else}
       <DiffView />
+    {/if}
+  {/snippet}
+
+  <main class:split={splitMode}>
+    <section class="pane">
+      {@render renderView(mode, true)}
+    </section>
+    {#if splitMode}
+      <section class="pane right">
+        <div class="pane-mode-bar" role="tablist" aria-label="Right pane mode">
+          {#each MODE_ENTRIES as m}
+            {@const disabled = m.requiresGit && !doc.gitAvailable}
+            <button
+              role="tab"
+              aria-selected={rightMode === m.id}
+              class:active={rightMode === m.id}
+              {disabled}
+              onclick={() => setRightMode(m.id)}
+              title={disabled ? "Requires a Git-managed file" : m.label}
+            >
+              {m.label}
+            </button>
+          {/each}
+          <button
+            class="close-split"
+            onclick={toggleSplit}
+            aria-label="Close split"
+            title="Close split"
+          >
+            ×
+          </button>
+        </div>
+        <div class="pane-view">
+          {@render renderView(rightMode, false)}
+        </div>
+      </section>
     {/if}
   </main>
 
@@ -945,5 +1034,68 @@
        but use the same token, so they read as one continuous surface. */
     background: var(--mdv-bg);
     color: var(--mdv-text);
+    display: flex;
+    flex-direction: column;
+  }
+  main.split {
+    flex-direction: row;
+  }
+  main > .pane {
+    flex: 1 1 100%;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  main.split > .pane {
+    flex-basis: 50%;
+  }
+  main.split > .pane + .pane {
+    border-left: 1px solid var(--mdv-border);
+  }
+  .pane-mode-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--mdv-border);
+    background: var(--mdv-surface);
+    font-size: 0.78rem;
+    flex-shrink: 0;
+  }
+  .pane-mode-bar button {
+    background: transparent;
+    border: 0;
+    color: var(--mdv-text-mute);
+    padding: 0.22rem 0.55rem;
+    border-radius: 3px;
+    font: inherit;
+    cursor: pointer;
+  }
+  .pane-mode-bar button:hover:not(:disabled) {
+    background: var(--mdv-surface-hi);
+    color: var(--mdv-text);
+  }
+  .pane-mode-bar button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .pane-mode-bar button.active {
+    background: var(--mdv-accent-bg);
+    color: var(--mdv-accent-fg);
+  }
+  .pane-mode-bar .close-split {
+    margin-left: auto;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0.1rem 0.45rem;
+  }
+  .pane-view {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 </style>
