@@ -534,19 +534,70 @@
     menuOpen = false;
   }
 
-  type ModeEntry = { id: Mode; key: string; requiresGit?: boolean };
-  const MODE_ENTRIES: ModeEntry[] = [
-    { id: "source", key: "1" },
-    { id: "live", key: "2" },
-    { id: "wysiwyg", key: "3" },
-    { id: "preview", key: "4" },
-    { id: "diff", key: "5", requiresGit: true },
+  // The 5 base modes are bucketed into 3 top-level groups so the in-app menu
+  // and pane mode bar show 3 buttons instead of 5. The "main" sub-mode is
+  // the richer one (live preview / WYSIWYG); the "sub" is the raw / read-only
+  // alternative reached via the in-pane chip or ⌘⇧{1,2}.
+  type Group = "live" | "wysiwyg" | "diff";
+  const GROUP_OF: Record<Mode, Group> = {
+    source: "live",
+    live: "live",
+    wysiwyg: "wysiwyg",
+    preview: "wysiwyg",
+    diff: "diff",
+  };
+  const GROUP_MAIN: Record<Group, Mode> = {
+    live: "live",
+    wysiwyg: "wysiwyg",
+    diff: "diff",
+  };
+  const GROUP_SUB: Record<Group, Mode | null> = {
+    live: "source",
+    wysiwyg: "preview",
+    diff: null,
+  };
+
+  type GroupEntry = { id: Group; key: string; subKey?: string; requiresGit?: boolean };
+  const GROUP_ENTRIES: GroupEntry[] = [
+    { id: "live", key: "1", subKey: "!" },
+    { id: "wysiwyg", key: "2", subKey: "@" },
+    { id: "diff", key: "3", requiresGit: true },
   ];
+
+  // Remember the last sub-mode the user was on within each non-Diff group,
+  // so jumping out and back doesn't reset their preference. Diff has no sub.
+  let lastSubByGroup = $state<{ live: Mode; wysiwyg: Mode }>({
+    live: "live",
+    wysiwyg: "wysiwyg",
+  });
+  $effect(() => {
+    const g = GROUP_OF[mode];
+    if (g === "live" || g === "wysiwyg") lastSubByGroup[g] = mode;
+  });
+
+  const currentGroup = $derived(GROUP_OF[mode]);
 
   // Label is locale-dependent. Reads `i18n.resolved` ($state) so any caller
   // inside a template re-evaluates when the language changes.
   function modeLabel(m: Mode): string {
     return i18n.t(`mode.${m}`);
+  }
+  function groupLabel(g: Group): string {
+    return modeLabel(GROUP_MAIN[g]);
+  }
+
+  function setGroup(g: Group) {
+    if (g === "diff") return setMode("diff");
+    return setMode(lastSubByGroup[g]);
+  }
+
+  function toggleSubInGroup(g: Group) {
+    if (g === "diff") return;
+    const cur = lastSubByGroup[g];
+    const main = GROUP_MAIN[g];
+    const sub = GROUP_SUB[g];
+    if (!sub) return;
+    return setMode(cur === main ? sub : main);
   }
 
   async function setMode(target: Mode) {
@@ -587,6 +638,12 @@
   function setRightMode(m: Mode) {
     if (m === "diff" && !doc.gitAvailable) return;
     rightMode = m;
+  }
+
+  // Right pane has no remembered sub-mode; group click always lands on the
+  // group's canonical main. Sub-mode is reached via the in-bar toggle.
+  function setRightGroup(g: Group) {
+    setRightMode(GROUP_MAIN[g]);
   }
 
   function toggleSplit() {
@@ -639,24 +696,30 @@
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
 
-      // Mode shortcuts: ⌘1..⌘5 for the (left) primary pane, and ⌥⌘1..⌥⌘5 for
-      // the right pane when split is open. Driven by MODE_ENTRIES so adding
-      // a mode adds both shortcuts here automatically. setMode / setRightMode
-      // enforce the Diff availability rule.
+      // Mode shortcuts — mirror the native View menu accelerators so the
+      // two stay consistent across platforms. ⌘1/2/3 jump to each group's
+      // main mode; ⌘⇧1 / ⌘⇧2 reach the sub-mode directly. With shift held,
+      // e.key arrives as the shifted character on US layouts ("!", "@"),
+      // so we check both forms.
       //
-      // On Mac ⌥+digit produces a different e.key ("¡", "™", ...), so for the
-      // Alt-modified path we match against the physical key (e.code).
-      for (const m of MODE_ENTRIES) {
-        const matchesPlain = !e.altKey && e.key === m.key;
-        const matchesAlt = e.altKey && e.code === `Digit${m.key}`;
-        if (matchesPlain) {
+      // ⌥⌘1/2/3 targets the right pane (when split is open). Mac ⌥+digit
+      // produces a different e.key ("¡", "™", ...) so we match e.code for
+      // the Alt-modified path.
+      for (const g of GROUP_ENTRIES) {
+        if (e.key === g.key && !e.shiftKey && !e.altKey) {
           e.preventDefault();
-          setMode(m.id);
+          setMode(GROUP_MAIN[g.id]);
           return;
         }
-        if (matchesAlt && splitMode) {
+        const sub = GROUP_SUB[g.id];
+        if (sub && g.subKey && e.shiftKey && !e.altKey && (e.key === g.subKey || e.key === g.key)) {
           e.preventDefault();
-          setRightMode(m.id);
+          setMode(sub);
+          return;
+        }
+        if (e.altKey && !e.shiftKey && e.code === `Digit${g.key}` && splitMode) {
+          e.preventDefault();
+          setRightGroup(g.id);
           return;
         }
       }
@@ -752,6 +815,32 @@
     {/if}
   {/snippet}
 
+  <!-- Sub-mode chip floats top-left of the primary pane so the user can
+       toggle Source ↔ Live Preview (or WYSIWYG ↔ Preview) without going
+       through the menu. Hidden in Diff group (which has its own submode
+       bar) and in history view (output is locked to Preview). Also hidden
+       in fullscreen so it doesn't fight with the title overlay. -->
+  {#if !doc.history && !isFullscreen && currentGroup !== "diff"}
+    {@const main = GROUP_MAIN[currentGroup]}
+    {@const sub = GROUP_SUB[currentGroup]}
+    {#if sub}
+      <div class="submode-chip" role="tablist" aria-label="View sub-mode">
+        <button
+          role="tab"
+          aria-selected={mode === main}
+          class:active={mode === main}
+          onclick={() => setMode(main)}
+        >{modeLabel(main)}</button>
+        <button
+          role="tab"
+          aria-selected={mode === sub}
+          class:active={mode === sub}
+          onclick={() => setMode(sub)}
+        >{modeLabel(sub)}</button>
+      </div>
+    {/if}
+  {/if}
+
   <!-- ☰ menu floats over the content top-right; the old dedicated header
        strip was just wasting vertical space. -->
   <div class="menu-wrap" class:open={menuOpen}>
@@ -767,23 +856,42 @@
     </button>
     {#if menuOpen}
       <div role="menu" class="menu">
-          <div class="section">{i18n.t("mode.source").replace(/^./, (c) => c.toUpperCase())}</div>
-          {#each MODE_ENTRIES as m}
-            {@const disabled = m.requiresGit && !doc.gitAvailable}
+          <div class="section">{i18n.t("mode.section")}</div>
+          {#each GROUP_ENTRIES as g}
+            {@const disabled = g.requiresGit && !doc.gitAvailable}
+            {@const isCurrent = currentGroup === g.id}
+            {@const sub = GROUP_SUB[g.id]}
             <button
               role="menuitem"
               class="mode-item"
-              class:active={mode === m.id}
+              class:active={isCurrent}
               {disabled}
-              onclick={() => setMode(m.id)}
+              onclick={() => setGroup(g.id)}
               title={disabled ? i18n.t("menu.requiresGit") : undefined}
             >
               <span>
-                <span class="check" aria-hidden="true">{mode === m.id ? "✓" : ""}</span>
-                {modeLabel(m.id)}
+                <span class="check" aria-hidden="true">{isCurrent ? "✓" : ""}</span>
+                {groupLabel(g.id)}
+                {#if isCurrent && sub && mode === sub}
+                  <span class="submode-tag">· {modeLabel(sub)}</span>
+                {/if}
               </span>
-              <kbd>{MOD}{m.key}</kbd>
+              <kbd>{MOD}{g.key}</kbd>
             </button>
+            {#if isCurrent && sub}
+              <button
+                role="menuitem"
+                class="mode-item sub"
+                onclick={() => toggleSubInGroup(g.id)}
+                title={i18n.t("mode.toggleSub")}
+              >
+                <span>
+                  <span class="check" aria-hidden="true">↳</span>
+                  {modeLabel(mode === sub ? GROUP_MAIN[g.id] : sub)}
+                </span>
+                <kbd>{MOD}{SHIFT}{g.key}</kbd>
+              </button>
+            {/if}
           {/each}
           <div class="sep"></div>
           <button role="menuitem" onclick={toggleSplit}>
@@ -792,21 +900,21 @@
           </button>
           {#if splitMode}
             <div class="section">{i18n.t("menu.rightPaneMode")}</div>
-            {#each MODE_ENTRIES as m}
-              {@const disabled = m.requiresGit && !doc.gitAvailable}
+            {#each GROUP_ENTRIES as g}
+              {@const disabled = g.requiresGit && !doc.gitAvailable}
               <button
                 role="menuitem"
                 class="mode-item"
-                class:active={rightMode === m.id}
+                class:active={GROUP_OF[rightMode] === g.id}
                 {disabled}
-                onclick={() => { setRightMode(m.id); closeMenu(); }}
+                onclick={() => { setRightGroup(g.id); closeMenu(); }}
                 title={disabled ? i18n.t("menu.requiresGit") : undefined}
               >
                 <span>
-                  <span class="check" aria-hidden="true">{rightMode === m.id ? "✓" : ""}</span>
-                  {modeLabel(m.id)}
+                  <span class="check" aria-hidden="true">{GROUP_OF[rightMode] === g.id ? "✓" : ""}</span>
+                  {groupLabel(g.id)}
                 </span>
-                <kbd>{ALT}{MOD}{m.key}</kbd>
+                <kbd>{ALT}{MOD}{g.key}</kbd>
               </button>
             {/each}
           {/if}
@@ -975,8 +1083,42 @@
           {/if}
         </section>
         {#if splitMode}
+          {@const rightGroup = GROUP_OF[rightMode]}
+          {@const rightSub = GROUP_SUB[rightGroup]}
           <section class="pane right">
             {@render titlePill(rightMode)}
+            <div class="pane-mode-bar" role="tablist" aria-label="Right pane mode">
+              {#each GROUP_ENTRIES as g}
+                {@const disabled = g.requiresGit && !doc.gitAvailable}
+                <button
+                  role="tab"
+                  aria-selected={rightGroup === g.id}
+                  class:active={rightGroup === g.id}
+                  {disabled}
+                  onclick={() => setRightGroup(g.id)}
+                  title={disabled ? i18n.t("menu.requiresGit") : groupLabel(g.id)}
+                >
+                  {groupLabel(g.id)}
+                </button>
+              {/each}
+              {#if rightSub}
+                <button
+                  class="sub-toggle"
+                  onclick={() => setRightMode(rightMode === rightSub ? GROUP_MAIN[rightGroup] : rightSub)}
+                  title={i18n.t("mode.toggleSub")}
+                >
+                  {modeLabel(rightMode === rightSub ? GROUP_MAIN[rightGroup] : rightSub)}
+                </button>
+              {/if}
+              <button
+                class="close-split"
+                onclick={toggleSplit}
+                aria-label={i18n.t("menu.splitClose")}
+                title={i18n.t("menu.splitClose")}
+              >
+                ×
+              </button>
+            </div>
             {#if rightMode === "source"}
               <SourceView
                 text={doc.text}
@@ -1287,6 +1429,17 @@
   .menu .mode-item.active {
     color: var(--mddiff-accent-fg);
   }
+  /* Sub-mode toggle entry sits indented below its group's main entry. */
+  .menu .mode-item.sub {
+    padding-left: 1.2rem;
+    font-size: 0.92em;
+    color: var(--mddiff-text-mute);
+  }
+  .menu .submode-tag {
+    font-size: 0.82em;
+    color: var(--mddiff-text-mute);
+    margin-left: 0.2em;
+  }
   .menu kbd {
     font: inherit;
     font-size: 0.76em;
@@ -1412,7 +1565,6 @@
   .workspace.split > .pane + .pane {
     border-left: 1px solid var(--mddiff-border);
   }
-
   /* Show the "follow link" affordance while the user is holding ⌘ / Ctrl.
      Applied to every view that has interactive links — Preview's plain-click
      already opens, but the pointer-on-modifier still helps confirm the link
@@ -1424,6 +1576,71 @@
   :global(:root.mddiff-modifier-down) :global(.sbs a),
   :global(:root.mddiff-modifier-down) :global(.mddiff-lp-link),
   :global(:root.mddiff-modifier-down) :global(.mddiff-cm-link) {
+    cursor: pointer;
+  }
+
+  /* Floating sub-mode toggle (top-left). Mirrors the menu trigger on the
+     opposite side. Segmented pill with the active sub-mode highlighted.
+     (Removed by later commit; placeholder so the intermediate rebase step
+     compiles — actual deletion lands in 7589a8b.) */
+  .submode-chip {
+    position: fixed;
+    top: 0.45rem;
+    left: 0.75rem;
+    z-index: 30;
+    display: inline-flex;
+    border: 1px solid var(--mddiff-border-mute);
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--mddiff-surface-pop);
+    box-shadow: 0 2px 8px var(--mddiff-shadow);
+    font-size: 0.78rem;
+  }
+  .submode-chip button {
+    background: transparent;
+    border: 0;
+    padding: 0.3rem 0.85rem;
+    font: inherit;
+    color: var(--mddiff-text-mute);
+    cursor: pointer;
+    line-height: 1.2;
+  }
+  .submode-chip button:hover:not(.active) {
+    color: var(--mddiff-text);
+  }
+  .submode-chip button.active {
+    background: var(--mddiff-accent-bg);
+    color: var(--mddiff-accent-fg);
+  }
+
+  .pane-mode-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--mddiff-border);
+    background: var(--mddiff-surface);
+    font-size: 0.78rem;
+    flex-shrink: 0;
+  }
+  .pane-mode-bar .sub-toggle {
+    margin-left: 0.4rem;
+    border: 1px solid var(--mddiff-border-mute);
+    border-radius: 4px;
+    padding: 0.15rem 0.55rem;
+    color: var(--mddiff-text-mute);
+  }
+  .pane-mode-bar .sub-toggle:hover {
+    color: var(--mddiff-text);
+    background: var(--mddiff-surface-hi);
+  }
+  .pane-mode-bar button {
+    background: transparent;
+    border: 0;
+    color: var(--mddiff-text-mute);
+    padding: 0.22rem 0.55rem;
+    border-radius: 3px;
+    font: inherit;
     cursor: pointer;
   }
 </style>
