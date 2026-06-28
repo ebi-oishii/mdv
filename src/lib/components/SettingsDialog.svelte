@@ -1,14 +1,17 @@
 <script lang="ts">
   import { settings } from "$lib/stores/settings.svelte";
-  import type { FontSize, Theme } from "$lib/stores/settings.svelte";
+  import type {
+    EditorTheme,
+    FontSize,
+    Theme,
+  } from "$lib/stores/settings.svelte";
   import type { Mode } from "$lib/types";
 
   let { onClose }: { onClose: () => void } = $props();
 
-  function update<K extends "theme" | "editorFontSize" | "defaultMode">(
-    key: K,
-    value: Theme | FontSize | Mode,
-  ) {
+  function update<
+    K extends "theme" | "editorFontSize" | "defaultMode" | "editorTheme",
+  >(key: K, value: Theme | FontSize | Mode | EditorTheme) {
     // @ts-expect-error narrow on key
     settings[key] = value;
     settings.persist();
@@ -66,6 +69,23 @@
         <option value="wysiwyg">WYSIWYG</option>
         <option value="preview">Preview</option>
         <option value="diff">Diff (when Git available)</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label for="editortheme">Editor syntax theme</label>
+      <select
+        id="editortheme"
+        value={settings.editorTheme}
+        onchange={(e) =>
+          update(
+            "editorTheme",
+            (e.currentTarget as HTMLSelectElement).value as EditorTheme,
+          )}
+      >
+        <option value="github">GitHub</option>
+        <option value="solarized">Solarized</option>
+        <option value="dracula">Dracula</option>
       </select>
     </div>
 

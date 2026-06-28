@@ -2,11 +2,16 @@ import type { Mode } from "$lib/types";
 
 export type Theme = "auto" | "light" | "dark";
 export type FontSize = "small" | "medium" | "large";
+export type EditorTheme = "github" | "solarized" | "dracula";
 
 export interface Settings {
   theme: Theme;
   editorFontSize: FontSize;
   defaultMode: Mode;
+  /** Editor syntax theme — swaps the --mdv-syntax-* palette used by the
+   * Source view's markdown highlighting. Doesn't touch editor background
+   * or text color so it stays consistent with the app's light/dark mode. */
+  editorTheme: EditorTheme;
 }
 
 const STORAGE_KEY = "mdv-settings-v1";
@@ -15,6 +20,7 @@ const DEFAULTS: Settings = {
   theme: "auto",
   editorFontSize: "medium",
   defaultMode: "source",
+  editorTheme: "github",
 };
 
 function load(): Settings {
@@ -33,6 +39,7 @@ class SettingsStore {
   theme = $state<Theme>(DEFAULTS.theme);
   editorFontSize = $state<FontSize>(DEFAULTS.editorFontSize);
   defaultMode = $state<Mode>(DEFAULTS.defaultMode);
+  editorTheme = $state<EditorTheme>(DEFAULTS.editorTheme);
 
   /** Hydrate from localStorage. Call once at app mount on the client. */
   hydrate() {
@@ -40,6 +47,7 @@ class SettingsStore {
     this.theme = s.theme;
     this.editorFontSize = s.editorFontSize;
     this.defaultMode = s.defaultMode;
+    this.editorTheme = s.editorTheme;
   }
 
   persist() {
@@ -48,6 +56,7 @@ class SettingsStore {
       theme: this.theme,
       editorFontSize: this.editorFontSize,
       defaultMode: this.defaultMode,
+      editorTheme: this.editorTheme,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
   }
@@ -56,6 +65,7 @@ class SettingsStore {
     this.theme = DEFAULTS.theme;
     this.editorFontSize = DEFAULTS.editorFontSize;
     this.defaultMode = DEFAULTS.defaultMode;
+    this.editorTheme = DEFAULTS.editorTheme;
     this.persist();
   }
 }

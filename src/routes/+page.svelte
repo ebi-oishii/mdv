@@ -142,6 +142,11 @@
 
   $effect(() => {
     if (typeof document === "undefined") return;
+    document.documentElement.dataset.editorTheme = settings.editorTheme;
+  });
+
+  $effect(() => {
+    if (typeof document === "undefined") return;
     const px = FONT_SIZE_PX[settings.editorFontSize];
     document.documentElement.style.setProperty("--mdv-editor-font-size", `${px}px`);
   });
@@ -578,8 +583,9 @@
 
     --mdv-shadow:       light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.5));
 
-    /* Syntax highlight colors (Source view). Based on GitHub Primer so
-       light and dark feel familiar to anyone who reads code on GitHub. */
+    /* Syntax highlight colors (Source view). Default palette (GitHub) lives
+       on :root; alternate themes live below as :root[data-editor-theme]
+       overrides so the chosen palette wins through specificity. */
     --mdv-syntax-heading: light-dark(#0550ae, #79c0ff);
     --mdv-syntax-code:    light-dark(#cf222e, #ff7b72);
     --mdv-syntax-link:    light-dark(#0969da, #58a6ff);
@@ -600,6 +606,35 @@
   }
   :global(:root[data-theme="auto"]) {
     color-scheme: light dark;
+  }
+
+  /* ---------- Editor syntax themes ----------
+     Overrides for the --mdv-syntax-* palette only. Editor background, text,
+     and gutter stay tied to the app's light/dark mode so the editor doesn't
+     visually break away from the rest of the UI. "github" is the default
+     defined on :root above; this section adds "solarized" and "dracula". */
+  :global(:root[data-editor-theme="solarized"]) {
+    /* Ethan Schoonover's Solarized accent set. The picks below contrast on
+       both Solarized Light (#fdf6e3) and Solarized Dark (#002b36), and the
+       neutral-leaning ones (quote / punct) flip with light-dark(). */
+    --mdv-syntax-heading: #268bd2; /* blue */
+    --mdv-syntax-code:    #d33682; /* magenta */
+    --mdv-syntax-link:    #2aa198; /* cyan */
+    --mdv-syntax-quote:   light-dark(#93a1a1, #586e75); /* base1 / base01 */
+    --mdv-syntax-punct:   light-dark(#93a1a1, #586e75);
+    --mdv-syntax-meta:    #6c71c4; /* violet */
+  }
+  :global(:root[data-editor-theme="dracula"]) {
+    /* Dracula is fundamentally a dark theme — the palette is designed
+       against #282a36. We don't force the app bg here (would clash with
+       the global theme setting), so these colors will look a bit pale on
+       a light app bg; that's expected. */
+    --mdv-syntax-heading: #bd93f9; /* purple */
+    --mdv-syntax-code:    #ff79c6; /* pink */
+    --mdv-syntax-link:    #8be9fd; /* cyan */
+    --mdv-syntax-quote:   #6272a4; /* comment */
+    --mdv-syntax-punct:   #6272a4;
+    --mdv-syntax-meta:    #ffb86c; /* orange */
   }
 
   /* ---------- Shell ---------- */
