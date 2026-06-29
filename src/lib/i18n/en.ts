@@ -85,6 +85,9 @@ export const en = {
     defaultMode: "Default mode on open",
     softWrap: "Soft wrap",
     lineNumbers: "Line numbers",
+    spellcheck: "Spell check",
+    spellcheckHint:
+      "Uses the OS / browser dictionary. Underlines unrecognized words in the editable views (Source / Live Preview / WYSIWYG); right-click for suggestions. No effect on Preview / Diff.",
     tabWidth: "Tab width",
     tab2: "2 spaces",
     tab4: "4 spaces",

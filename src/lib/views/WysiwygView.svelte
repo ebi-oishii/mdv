@@ -12,6 +12,7 @@
   import { rewriteRelativeImageSrc } from "./image-path";
   import { handleLinkClick } from "./link-click";
   import { doc } from "$lib/stores/doc.svelte";
+  import { settings } from "$lib/stores/settings.svelte";
 
   let {
     text,
@@ -42,6 +43,22 @@
       const rewritten = rewriteRelativeImageSrc(src, doc.path);
       if (rewritten !== src) img.setAttribute("src", rewritten);
     }
+  }
+
+  // Tracks code / pre nodes inside .ProseMirror so we can stamp
+  // spellcheck="false" on them as Milkdown re-renders. Nested
+  // spellcheck="false" overrides the editor-level spellcheck="true",
+  // so identifiers in code stay un-underlined while prose is checked.
+  let spellMaskMo: MutationObserver | null = null;
+  function maskCodeSpellcheck() {
+    if (!container) return;
+    container
+      .querySelectorAll(".ProseMirror code, .ProseMirror pre")
+      .forEach((el) => {
+        if (el.getAttribute("spellcheck") !== "false") {
+          el.setAttribute("spellcheck", "false");
+        }
+      });
   }
 
   // Milkdown doesn't expose source-line positions on its rendered nodes, so we
@@ -248,6 +265,12 @@
 
     ready = true;
 
+    // Stamp once after initial render, then keep masked as Milkdown
+    // updates the DOM (typing in code, inserting code blocks, etc.).
+    maskCodeSpellcheck();
+    spellMaskMo = new MutationObserver(() => maskCodeSpellcheck());
+    spellMaskMo.observe(container, { childList: true, subtree: true });
+
     // Restore scroll position last so Milkdown's render has been committed
     // and lastEmitted (post-normalization) is set for an accurate line map.
     const restore = doc.currentLine;
@@ -276,6 +299,8 @@
       // DOM might already be torn down; skip silently.
     }
     scrollTracker?.detach();
+    spellMaskMo?.disconnect();
+    spellMaskMo = null;
     editor?.destroy();
     editor = null;
   });
@@ -299,6 +324,17 @@
       } catch {}
       doc.pendingScrollLine = null;
     });
+  });
+
+  // Browser/OS-native spellcheck on the .ProseMirror contenteditable.
+  // Milkdown doesn't expose a first-class API for editor-host attributes,
+  // so we set it directly. Gate on `ready` so we wait for the element
+  // (Milkdown creates .ProseMirror inside our container only after init).
+  $effect(() => {
+    const on = settings.spellcheck;
+    if (!ready) return;
+    const pm = container?.querySelector(".ProseMirror") as HTMLElement | null;
+    if (pm) pm.setAttribute("spellcheck", on ? "true" : "false");
   });
 
 </script>

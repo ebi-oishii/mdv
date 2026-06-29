@@ -84,6 +84,9 @@ export const ja: Dictionary = {
     defaultMode: "起動時のモード",
     softWrap: "ソフトラップ",
     lineNumbers: "行番号を表示",
+    spellcheck: "スペルチェック",
+    spellcheckHint:
+      "OS / ブラウザの辞書を使用。Source / Live Preview / WYSIWYG の編集可能ビューで未知語に下線、右クリックで修正候補。Preview / Diff には作用しない。",
     tabWidth: "タブ幅",
     tab2: "2 スペース",
     tab4: "4 スペース",
