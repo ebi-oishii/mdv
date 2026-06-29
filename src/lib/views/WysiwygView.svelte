@@ -199,26 +199,18 @@
   }
 
   onMount(async () => {
+    console.log("[mddiff] WYS mount: start", performance.now(), "textLen=", text.length);
     find.bind(container);
+    console.log("[mddiff] WYS mount: find.bind done", performance.now());
 
     const initial = text;
-    // Wrap the entire mount in try/catch — if Milkdown throws somewhere
-    // (parser hiccup on a particular markdown construct, plugin
-    // initialization error, etc.) we don't want the exception to escape
-    // and break Svelte's reactive graph for the whole app. The cost is
-    // the WYSIWYG view shows blank; user can still switch modes.
     try {
+      console.log("[mddiff] WYS mount: before Editor.make().create()", performance.now());
       editor = await Editor.make()
         .config((ctx) => {
           ctx.set(rootCtx, container);
           ctx.set(defaultValueCtx, initial);
           ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
-            // Milkdown fires markdownUpdated during initial doc construction
-            // AND can fire during tear-down. Gate on `ready` for both edges
-            // (set true after mount, set false at start of onDestroy).
-            // Also wrap the body so a downstream onchange throwing doesn't
-            // poison Milkdown's transaction processing — once the listener
-            // throws, Milkdown can stop forwarding further updates.
             if (!ready) return;
             try {
               if (markdown !== lastEmitted) {
@@ -234,6 +226,7 @@
         .use(gfm)
         .use(listener)
         .create();
+      console.log("[mddiff] WYS mount: Editor.make().create() done", performance.now());
     } catch (err) {
       console.error("[mddiff] WYSIWYG editor build failed", err);
       return;
@@ -241,6 +234,7 @@
     if (!editor) return;
 
     container.addEventListener("click", handleTaskClick);
+    console.log("[mddiff] WYS mount: click handlers attached", performance.now());
 
     // Link click delegation. ProseMirror also handles link clicks internally
     // (positions the caret) — we listen at the container so we fire before
@@ -255,6 +249,7 @@
     // ProseMirror DOM and rewrite img src on the fly. The rewrite is
     // idempotent: a resolved asset:// URL is no longer "relative" so the
     // observer's re-fire after our setAttribute is a no-op.
+    console.log("[mddiff] WYS mount: before imageObserver setup", performance.now());
     imageObserver = new MutationObserver(() => {
       try { rewriteImages(); } catch (err) {
         console.error("[mddiff] WYSIWYG rewriteImages", err);
@@ -277,6 +272,7 @@
     //
     // We intentionally do NOT call `onchange` here — that's reserved for
     // genuine user edits via the listener.
+    console.log("[mddiff] WYS mount: before getMarkdown", performance.now());
     try {
       const serialized = editor.action(getMarkdown());
       lastEmitted = serialized;
@@ -286,18 +282,22 @@
     } catch {
       // getMarkdown not available in this build; skip detection silently.
     }
+    console.log("[mddiff] WYS mount: getMarkdown done", performance.now());
 
     ready = true;
+    console.log("[mddiff] WYS mount: ready=true", performance.now());
 
     // Stamp once after initial render, then keep masked as Milkdown
     // updates the DOM (typing in code, inserting code blocks, etc.).
     try { maskCodeSpellcheck(); } catch {}
+    console.log("[mddiff] WYS mount: maskCodeSpellcheck done", performance.now());
     spellMaskMo = new MutationObserver(() => {
       try { maskCodeSpellcheck(); } catch (err) {
         console.error("[mddiff] WYSIWYG maskCodeSpellcheck", err);
       }
     });
     spellMaskMo.observe(container, { childList: true, subtree: true });
+    console.log("[mddiff] WYS mount: complete", performance.now());
 
     // Restore scroll position last so Milkdown's render has been committed
     // and lastEmitted (post-normalization) is set for an accurate line map.
