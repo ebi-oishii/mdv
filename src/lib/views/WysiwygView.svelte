@@ -197,28 +197,43 @@
     find.bind(container);
 
     const initial = text;
-    editor = await Editor.make()
-      .config((ctx) => {
-        ctx.set(rootCtx, container);
-        ctx.set(defaultValueCtx, initial);
-        ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
-          // Milkdown fires markdownUpdated during initial doc construction.
-          // If we let it through, `onchange` ships the normalized form into
-          // the doc store BEFORE `onnormalize` (and `adoptNormalized`) get a
-          // chance to update savedText alongside, so the doc looks dirty
-          // even though the user didn't edit anything. Gate on `ready` so
-          // genuine user edits are the only thing that emits.
-          if (!ready) return;
-          if (markdown !== lastEmitted) {
-            lastEmitted = markdown;
-            onchange(markdown);
-          }
-        });
-      })
-      .use(commonmark)
-      .use(gfm)
-      .use(listener)
-      .create();
+    // Wrap the entire mount in try/catch — if Milkdown throws somewhere
+    // (parser hiccup on a particular markdown construct, plugin
+    // initialization error, etc.) we don't want the exception to escape
+    // and break Svelte's reactive graph for the whole app. The cost is
+    // the WYSIWYG view shows blank; user can still switch modes.
+    try {
+      editor = await Editor.make()
+        .config((ctx) => {
+          ctx.set(rootCtx, container);
+          ctx.set(defaultValueCtx, initial);
+          ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
+            // Milkdown fires markdownUpdated during initial doc construction
+            // AND can fire during tear-down. Gate on `ready` for both edges
+            // (set true after mount, set false at start of onDestroy).
+            // Also wrap the body so a downstream onchange throwing doesn't
+            // poison Milkdown's transaction processing — once the listener
+            // throws, Milkdown can stop forwarding further updates.
+            if (!ready) return;
+            try {
+              if (markdown !== lastEmitted) {
+                lastEmitted = markdown;
+                onchange(markdown);
+              }
+            } catch (err) {
+              console.error("[mddiff] WYSIWYG markdownUpdated handler", err);
+            }
+          });
+        })
+        .use(commonmark)
+        .use(gfm)
+        .use(listener)
+        .create();
+    } catch (err) {
+      console.error("[mddiff] WYSIWYG editor build failed", err);
+      return;
+    }
+    if (!editor) return;
 
     container.addEventListener("click", handleTaskClick);
 
@@ -235,7 +250,11 @@
     // ProseMirror DOM and rewrite img src on the fly. The rewrite is
     // idempotent: a resolved asset:// URL is no longer "relative" so the
     // observer's re-fire after our setAttribute is a no-op.
-    imageObserver = new MutationObserver(() => rewriteImages());
+    imageObserver = new MutationObserver(() => {
+      try { rewriteImages(); } catch (err) {
+        console.error("[mddiff] WYSIWYG rewriteImages", err);
+      }
+    });
     imageObserver.observe(container, {
       childList: true,
       subtree: true,
@@ -267,8 +286,12 @@
 
     // Stamp once after initial render, then keep masked as Milkdown
     // updates the DOM (typing in code, inserting code blocks, etc.).
-    maskCodeSpellcheck();
-    spellMaskMo = new MutationObserver(() => maskCodeSpellcheck());
+    try { maskCodeSpellcheck(); } catch {}
+    spellMaskMo = new MutationObserver(() => {
+      try { maskCodeSpellcheck(); } catch (err) {
+        console.error("[mddiff] WYSIWYG maskCodeSpellcheck", err);
+      }
+    });
     spellMaskMo.observe(container, { childList: true, subtree: true });
 
     // Restore scroll position last so Milkdown's render has been committed
