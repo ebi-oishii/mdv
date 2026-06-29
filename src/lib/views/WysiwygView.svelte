@@ -5,6 +5,11 @@
   import { gfm } from "@milkdown/kit/preset/gfm";
   import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
   import { getMarkdown, replaceAll } from "@milkdown/kit/utils";
+  // ProseMirror's view module logs a console warning if `white-space: pre-wrap`
+  // (and a few other base styles) aren't on the contenteditable. Without
+  // those styles PM degrades to a code path that may misbehave on layout
+  // edges. Importing the stylesheet adds the rules globally.
+  import "prosemirror-view/style/prosemirror.css";
   import FindBar from "$lib/components/FindBar.svelte";
   import { useFind } from "./use-find.svelte";
   import { attachScrollTracker, type ScrollTracker } from "./scroll-tracker";
@@ -31,6 +36,19 @@
   let scrollTracker: ScrollTracker | null = null;
   let imageObserver: MutationObserver | null = null;
 
+  // The previous version of this view also ran a MutationObserver that
+  // stamped `spellcheck="false"` on code / pre nodes (so prose got spell-
+  // checked but identifiers in code didn't). That triggered an interaction
+  // with ProseMirror's own DOM observer: PM treats external attribute
+  // mutations as content changes and re-renders the node, which produces
+  // childList mutations, which fires our observer again, which sets the
+  // attribute, which PM re-renders... infinite loop, freezes the main
+  // thread, breaks the entire app after WYSIWYG mounts on any non-empty
+  // doc. See <internal commit history>. For v0.2.2 we drop the mask
+  // entirely — when the user enables spellcheck, code identifiers may
+  // also get red underlines. Acceptable trade-off until we move the mask
+  // into a Milkdown plugin that owns the attribute via PM's node spec.
+
   /**
    * Walk every `<img>` in the editor and rewrite relative src to Tauri's
    * `asset://` URL. Idempotent (resolved URLs aren't relative anymore).
@@ -43,22 +61,6 @@
       const rewritten = rewriteRelativeImageSrc(src, doc.path);
       if (rewritten !== src) img.setAttribute("src", rewritten);
     }
-  }
-
-  // Tracks code / pre nodes inside .ProseMirror so we can stamp
-  // spellcheck="false" on them as Milkdown re-renders. Nested
-  // spellcheck="false" overrides the editor-level spellcheck="true",
-  // so identifiers in code stay un-underlined while prose is checked.
-  let spellMaskMo: MutationObserver | null = null;
-  function maskCodeSpellcheck() {
-    if (!container) return;
-    container
-      .querySelectorAll(".ProseMirror code, .ProseMirror pre")
-      .forEach((el) => {
-        if (el.getAttribute("spellcheck") !== "false") {
-          el.setAttribute("spellcheck", "false");
-        }
-      });
   }
 
   // Milkdown doesn't expose source-line positions on its rendered nodes, so we
@@ -197,28 +199,32 @@
     find.bind(container);
 
     const initial = text;
-    editor = await Editor.make()
-      .config((ctx) => {
-        ctx.set(rootCtx, container);
-        ctx.set(defaultValueCtx, initial);
-        ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
-          // Milkdown fires markdownUpdated during initial doc construction.
-          // If we let it through, `onchange` ships the normalized form into
-          // the doc store BEFORE `onnormalize` (and `adoptNormalized`) get a
-          // chance to update savedText alongside, so the doc looks dirty
-          // even though the user didn't edit anything. Gate on `ready` so
-          // genuine user edits are the only thing that emits.
-          if (!ready) return;
-          if (markdown !== lastEmitted) {
-            lastEmitted = markdown;
-            onchange(markdown);
-          }
-        });
-      })
-      .use(commonmark)
-      .use(gfm)
-      .use(listener)
-      .create();
+    try {
+      editor = await Editor.make()
+        .config((ctx) => {
+          ctx.set(rootCtx, container);
+          ctx.set(defaultValueCtx, initial);
+          ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
+            if (!ready) return;
+            try {
+              if (markdown !== lastEmitted) {
+                lastEmitted = markdown;
+                onchange(markdown);
+              }
+            } catch (err) {
+              console.error("[mddiff] WYSIWYG markdownUpdated handler", err);
+            }
+          });
+        })
+        .use(commonmark)
+        .use(gfm)
+        .use(listener)
+        .create();
+    } catch (err) {
+      console.error("[mddiff] WYSIWYG editor build failed", err);
+      return;
+    }
+    if (!editor) return;
 
     container.addEventListener("click", handleTaskClick);
 
@@ -235,7 +241,11 @@
     // ProseMirror DOM and rewrite img src on the fly. The rewrite is
     // idempotent: a resolved asset:// URL is no longer "relative" so the
     // observer's re-fire after our setAttribute is a no-op.
-    imageObserver = new MutationObserver(() => rewriteImages());
+    imageObserver = new MutationObserver(() => {
+      try { rewriteImages(); } catch (err) {
+        console.error("[mddiff] WYSIWYG rewriteImages", err);
+      }
+    });
     imageObserver.observe(container, {
       childList: true,
       subtree: true,
@@ -264,12 +274,10 @@
     }
 
     ready = true;
-
-    // Stamp once after initial render, then keep masked as Milkdown
-    // updates the DOM (typing in code, inserting code blocks, etc.).
-    maskCodeSpellcheck();
-    spellMaskMo = new MutationObserver(() => maskCodeSpellcheck());
-    spellMaskMo.observe(container, { childList: true, subtree: true });
+    // Note: previous versions ran a MutationObserver here to mask
+    // spellcheck="false" on code/pre as Milkdown re-rendered. It deadlocked
+    // with ProseMirror's own DOM observer (PM revert-cycles foreign attrs,
+    // we re-stamp, PM reverts...). See the comment near `imageObserver`.
 
     // Restore scroll position last so Milkdown's render has been committed
     // and lastEmitted (post-normalization) is set for an accurate line map.
@@ -289,19 +297,30 @@
   });
 
   onDestroy(() => {
-    container?.removeEventListener("click", handleTaskClick);
-    container?.removeEventListener("click", handleWysiwygLinkClick);
+    // Block any markdownUpdated callback fired during teardown from
+    // propagating into doc.text — Milkdown's destroy can emit one final
+    // update as ProseMirror disposes.
+    ready = false;
+
     imageObserver?.disconnect();
     imageObserver = null;
+
+    container?.removeEventListener("click", handleTaskClick);
+    container?.removeEventListener("click", handleWysiwygLinkClick);
+
     try {
       scrollTracker?.captureNow();
     } catch {
       // DOM might already be torn down; skip silently.
     }
     scrollTracker?.detach();
-    spellMaskMo?.disconnect();
-    spellMaskMo = null;
-    editor?.destroy();
+    scrollTracker = null;
+
+    try {
+      editor?.destroy();
+    } catch (err) {
+      console.error("[mddiff] WYSIWYG editor.destroy", err);
+    }
     editor = null;
   });
 
