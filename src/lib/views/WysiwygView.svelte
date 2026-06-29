@@ -249,19 +249,19 @@
     // ProseMirror DOM and rewrite img src on the fly. The rewrite is
     // idempotent: a resolved asset:// URL is no longer "relative" so the
     // observer's re-fire after our setAttribute is a no-op.
-    console.log("[mddiff] WYS mount: before imageObserver setup", performance.now());
-    imageObserver = new MutationObserver(() => {
-      try { rewriteImages(); } catch (err) {
-        console.error("[mddiff] WYSIWYG rewriteImages", err);
-      }
-    });
-    imageObserver.observe(container, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["src"],
-    });
-    rewriteImages();
+    console.log("[mddiff] WYS mount: imageObserver DISABLED for diagnosis", performance.now());
+    // imageObserver = new MutationObserver(() => {
+    //   try { rewriteImages(); } catch (err) {
+    //     console.error("[mddiff] WYSIWYG rewriteImages", err);
+    //   }
+    // });
+    // imageObserver.observe(container, {
+    //   childList: true,
+    //   subtree: true,
+    //   attributes: true,
+    //   attributeFilter: ["src"],
+    // });
+    // rewriteImages();
 
     // After load, query Milkdown's own serialization of the doc to detect
     // round-trip normalization (e.g. `*foo*` <-> `_foo_`, link reference
@@ -287,17 +287,15 @@
     ready = true;
     console.log("[mddiff] WYS mount: ready=true", performance.now());
 
-    // Stamp once after initial render, then keep masked as Milkdown
-    // updates the DOM (typing in code, inserting code blocks, etc.).
-    try { maskCodeSpellcheck(); } catch {}
-    console.log("[mddiff] WYS mount: maskCodeSpellcheck done", performance.now());
-    spellMaskMo = new MutationObserver(() => {
-      try { maskCodeSpellcheck(); } catch (err) {
-        console.error("[mddiff] WYSIWYG maskCodeSpellcheck", err);
-      }
-    });
-    spellMaskMo.observe(container, { childList: true, subtree: true });
-    console.log("[mddiff] WYS mount: complete", performance.now());
+    // Spellcheck mask DISABLED for diagnosis
+    // try { maskCodeSpellcheck(); } catch {}
+    // spellMaskMo = new MutationObserver(() => {
+    //   try { maskCodeSpellcheck(); } catch (err) {
+    //     console.error("[mddiff] WYSIWYG maskCodeSpellcheck", err);
+    //   }
+    // });
+    // spellMaskMo.observe(container, { childList: true, subtree: true });
+    console.log("[mddiff] WYS mount: complete (observers disabled)", performance.now());
 
     // Restore scroll position last so Milkdown's render has been committed
     // and lastEmitted (post-normalization) is set for an accurate line map.
