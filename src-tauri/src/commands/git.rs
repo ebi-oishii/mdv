@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
+use mddiff_core::blame::BlameLine;
 use mddiff_core::diff::{DiffLine, HunkSummary};
 use mddiff_core::git::{BaseOption, SideBySidePayload, DEFAULT_BASE};
+use tauri::{AppHandle, Manager, Runtime};
 
 fn resolve(base: Option<String>) -> String {
     base.filter(|s| !s.trim().is_empty())
@@ -55,4 +57,23 @@ pub async fn git_side_by_side(
 #[tauri::command]
 pub async fn git_read_at(path: PathBuf, revspec: String) -> Result<String, String> {
     mddiff_core::git::read_at(&path, &revspec).map_err(|e| e.to_string())
+}
+
+/// Per-line blame across Git + local save snapshots. The snapshot timestamp
+/// is sourced from the app data dir (see commands::history) so the blame
+/// view can attribute non-HEAD lines to a "local · <date>" entry.
+#[tauri::command]
+pub async fn git_blame<R: Runtime>(
+    app: AppHandle<R>,
+    path: PathBuf,
+    current_text: String,
+) -> Result<Vec<BlameLine>, String> {
+    let latest_ts_ms = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .and_then(|dir| mddiff_core::history::list(&dir, &path).ok())
+        .and_then(|snaps| snaps.first().map(|m| m.timestamp_ms));
+    mddiff_core::blame::compute(&path, &current_text, latest_ts_ms)
+        .map_err(|e| e.to_string())
 }

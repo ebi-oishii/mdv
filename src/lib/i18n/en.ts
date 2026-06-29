@@ -98,6 +98,7 @@ export const en = {
     diffSubmodeHighlight: "Highlight Only",
     diffSubmodeFull: "Full",
     diffSubmodeSbs: "Side-by-Side",
+    diffSubmodeBlame: "Blame",
     diffDebounce: "Recompute delay",
     diffDebounce100: "100 ms (snappy)",
     diffDebounce250: "250 ms (default)",

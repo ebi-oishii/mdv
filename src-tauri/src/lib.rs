@@ -42,6 +42,7 @@ pub fn run() {
         commands::git::git_full_diff,
         commands::git::git_side_by_side,
         commands::git::git_read_at,
+        commands::git::git_blame,
         commands::history::snapshot_save,
         commands::history::snapshot_list,
         commands::history::snapshot_read,

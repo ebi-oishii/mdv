@@ -7,6 +7,7 @@
     diffTextFull,
     diffTextHunks,
     diffTextSideBySide,
+    gitBlame,
     gitFullDiff,
     gitHunks,
     gitListBases,
@@ -18,6 +19,7 @@
   import type {
     BaseKind,
     BaseOption,
+    BlameLine,
     DiffLine,
     DiffSubmode,
     HunkSummary,
@@ -27,6 +29,7 @@
   import HighlightView from "./diff/HighlightView.svelte";
   import FullDiffView from "./diff/FullDiffView.svelte";
   import SideBySideView from "./diff/SideBySideView.svelte";
+  import BlameView from "./diff/BlameView.svelte";
 
   const CUSTOM = "__custom__";
   // Synthetic revspec for "Compare with disk". When `doc.pendingDiskCompare`
@@ -47,6 +50,7 @@
   let hunks = $state<HunkSummary[]>([]);
   let lines = $state<DiffLine[]>([]);
   let sbs = $state<SideBySidePayload | null>(null);
+  let blameLines = $state<BlameLine[]>([]);
   let error = $state<string | null>(null);
   let loading = $state(false);
   // Default: hide commits that didn't touch this file. The "All commits"
@@ -139,7 +143,12 @@
     loading = true;
     error = null;
     try {
-      if (isDisk) {
+      if (submode === "blame") {
+        // Blame is always against HEAD lineage; ignores the base picker.
+        // Snapshot lines come back marked origin=local with the latest
+        // save timestamp.
+        blameLines = await gitBlame(doc.path, currentText);
+      } else if (isDisk) {
         const oldText = doc.pendingDiskCompare ?? "";
         await applyTextDiff(oldText);
       } else if (isSnap) {
@@ -167,7 +176,7 @@
       hunks = await diffTextHunks(oldText, currentText);
     } else if (submode === "full") {
       lines = await diffTextFull(oldText, currentText);
-    } else {
+    } else if (submode === "sidebyside") {
       sbs = await diffTextSideBySide(oldText, currentText);
     }
   }
@@ -275,6 +284,14 @@
           onclick={() => (submode = "sidebyside")}
         >
           Side-by-Side
+        </button>
+        <button
+          role="tab"
+          aria-selected={submode === "blame"}
+          class:active={submode === "blame"}
+          onclick={() => (submode = "blame")}
+        >
+          Blame
         </button>
       </div>
       <label class="base-select">
@@ -388,6 +405,8 @@
     <HighlightView text={currentText} {hunks} />
   {:else if submode === "full"}
     <FullDiffView {lines} />
+  {:else if submode === "blame"}
+    <BlameView text={currentText} lines={blameLines} />
   {:else if sbs}
     <SideBySideView payload={sbs} baseLabel={isDisk ? "disk" : base} />
   {:else}

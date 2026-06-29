@@ -195,6 +195,7 @@
         <option value="highlight">{i18n.t("settings.diffSubmodeHighlight")}</option>
         <option value="full">{i18n.t("settings.diffSubmodeFull")}</option>
         <option value="sidebyside">{i18n.t("settings.diffSubmodeSbs")}</option>
+        <option value="blame">{i18n.t("settings.diffSubmodeBlame")}</option>
       </select>
     </div>
 

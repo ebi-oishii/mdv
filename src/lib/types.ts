@@ -31,7 +31,22 @@ export type DiffLine =
   | { kind: "added"; new_no: number; text: string }
   | { kind: "removed"; old_no: number; text: string };
 
-export type DiffSubmode = "highlight" | "full" | "sidebyside";
+export type DiffSubmode = "highlight" | "full" | "sidebyside" | "blame";
+
+/** Origin of a blame line (mirrors `mddiff_core::blame::BlameOrigin`). */
+export type BlameOrigin = "git" | "local" | "buffer";
+
+/** Per-line blame info (mirrors `mddiff_core::blame::BlameLine`). */
+export interface BlameLine {
+  line_no: number;
+  origin: BlameOrigin;
+  sha: string | null;
+  short_sha: string | null;
+  author: string;
+  email: string | null;
+  date_ts: number;
+  summary: string | null;
+}
 
 export interface SideBySidePayload {
   old_text: string;

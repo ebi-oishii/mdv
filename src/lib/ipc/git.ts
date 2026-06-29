@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   BaseOption,
+  BlameLine,
   DiffLine,
   HunkSummary,
   SideBySidePayload,
@@ -60,6 +61,19 @@ export async function gitReadAt(
   revspec: string,
 ): Promise<string> {
   return await invoke<string>("git_read_at", { path, revspec });
+}
+
+/**
+ * Per-line blame for `currentText` against HEAD. Lines that differ from
+ * HEAD come back marked as origin = "local" (or "buffer" if no save
+ * snapshot exists yet) — the backend pulls the latest snapshot timestamp
+ * from the per-app data dir and stamps those lines with it.
+ */
+export async function gitBlame(
+  path: string,
+  currentText: string,
+): Promise<BlameLine[]> {
+  return await invoke<BlameLine[]>("git_blame", { path, currentText });
 }
 
 /**

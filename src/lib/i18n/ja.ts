@@ -97,6 +97,7 @@ export const ja: Dictionary = {
     diffSubmodeHighlight: "ハイライトのみ",
     diffSubmodeFull: "Full",
     diffSubmodeSbs: "Side-by-Side",
+    diffSubmodeBlame: "Blame",
     diffDebounce: "再計算の遅延",
     diffDebounce100: "100 ms（即時）",
     diffDebounce250: "250 ms（標準）",
