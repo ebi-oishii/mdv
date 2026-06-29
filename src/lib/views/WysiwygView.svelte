@@ -289,19 +289,37 @@
   });
 
   onDestroy(() => {
-    container?.removeEventListener("click", handleTaskClick);
-    container?.removeEventListener("click", handleWysiwygLinkClick);
+    // Block any markdownUpdated callback fired during teardown from
+    // propagating into doc.text — Milkdown's destroy can emit one final
+    // update as ProseMirror disposes, and routing that through onchange
+    // mid-mode-switch wedges the next view's mount (it's already racing to
+    // build its own editor from the same doc.text).
+    ready = false;
+
+    // Tear down observers BEFORE editor.destroy so DOM mutations from the
+    // dispose itself don't re-enter our handlers.
     imageObserver?.disconnect();
     imageObserver = null;
+    spellMaskMo?.disconnect();
+    spellMaskMo = null;
+
+    container?.removeEventListener("click", handleTaskClick);
+    container?.removeEventListener("click", handleWysiwygLinkClick);
+
     try {
       scrollTracker?.captureNow();
     } catch {
       // DOM might already be torn down; skip silently.
     }
     scrollTracker?.detach();
-    spellMaskMo?.disconnect();
-    spellMaskMo = null;
-    editor?.destroy();
+    scrollTracker = null;
+
+    // Milkdown.destroy can throw if the editor's already in a half-disposed
+    // state (rare, but observed during fast mode-switching). Swallow so the
+    // unmount completes cleanly.
+    try {
+      editor?.destroy();
+    } catch {}
     editor = null;
   });
 
