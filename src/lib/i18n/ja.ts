@@ -142,6 +142,23 @@ export const ja: Dictionary = {
     close: "アウトラインを閉じる",
     toggle: "アウトラインの表示切替",
   },
+  history: {
+    viewAt: "この版を見る",
+    bannerReadonly: "履歴表示中（読み取り専用）:",
+    prev: "古い版",
+    next: "新しい版",
+    restore: "この版を復元",
+    exit: "履歴表示を終了",
+    none: "（古いコミットはありません）",
+    error: "この版を読み込めませんでした。",
+    editLockedTitle: "履歴表示中は編集できません",
+    editLockedBody:
+      "現在は古い版を読み取り専用で表示中です。編集するには、まずこの版をバッファに復元してください。",
+    editLockedDirtyBody:
+      "現在は古い版を読み取り専用で表示中です。編集するには、まずこの版をバッファに復元してください。※現在の未保存の編集は上書きされます。",
+    editLockedOk: "復元して編集",
+    editLockedCancel: "履歴ビューを継続",
+  },
   diff: {
     loading: "差分を計算中…",
     base: "比較対象",

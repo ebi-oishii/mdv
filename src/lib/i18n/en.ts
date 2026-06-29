@@ -143,6 +143,23 @@ export const en = {
     close: "Close outline",
     toggle: "Toggle outline",
   },
+  history: {
+    viewAt: "View at this version",
+    bannerReadonly: "Viewing read-only at",
+    prev: "Older version",
+    next: "Newer version",
+    restore: "Restore this version",
+    exit: "Exit history view",
+    none: "(no older commits)",
+    error: "Couldn't read this revision.",
+    editLockedTitle: "Edit locked while viewing history",
+    editLockedBody:
+      "You're viewing this file at an older version (read-only). To edit it, restore this version into your buffer first.",
+    editLockedDirtyBody:
+      "You're viewing this file at an older version (read-only). To edit it, restore this version into your buffer — this will OVERWRITE your current unsaved edits.",
+    editLockedOk: "Restore & edit",
+    editLockedCancel: "Stay in history view",
+  },
   diff: {
     loading: "Computing diff…",
     base: "Base",

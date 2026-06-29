@@ -10,8 +10,10 @@
     gitFullDiff,
     gitHunks,
     gitListBases,
+    gitReadAt,
     gitSideBySide,
   } from "$lib/ipc/git";
+  import { i18n } from "$lib/i18n/index.svelte";
   import type {
     BaseKind,
     BaseOption,
@@ -52,6 +54,12 @@
   const isDisk = $derived(selected === DISK);
   const base = $derived(isCustom ? customBase.trim() || "HEAD" : selected);
 
+  // When history view is active, the diff's "current" side is the pinned
+  // historical content — not the live buffer. Everything (list_bases marker
+  // computation, diff calls, HighlightView overlay) flows through this
+  // single derived value.
+  const currentText = $derived(doc.history?.content ?? doc.text);
+
   // Auto-select the disk option when arriving from "Compare with disk".
   onMount(() => {
     if (doc.pendingDiskCompare != null) selected = DISK;
@@ -59,11 +67,11 @@
 
   $effect(() => {
     void doc.path;
-    void doc.text;
+    void currentText;
     if (!doc.path || !doc.gitAvailable) return;
     if (basesTimer) clearTimeout(basesTimer);
     const path = doc.path;
-    const text = doc.text;
+    const text = currentText;
     basesTimer = setTimeout(() => {
       gitListBases(path, text).then((b) => {
         bases = b;
@@ -76,7 +84,7 @@
 
   $effect(() => {
     void doc.path;
-    void doc.text;
+    void currentText;
     void submode;
     void base;
     void doc.pendingDiskCompare;
@@ -98,18 +106,18 @@
       if (isDisk) {
         const oldText = doc.pendingDiskCompare ?? "";
         if (submode === "highlight") {
-          hunks = await diffTextHunks(oldText, doc.text);
+          hunks = await diffTextHunks(oldText, currentText);
         } else if (submode === "full") {
-          lines = await diffTextFull(oldText, doc.text);
+          lines = await diffTextFull(oldText, currentText);
         } else {
-          sbs = await diffTextSideBySide(oldText, doc.text);
+          sbs = await diffTextSideBySide(oldText, currentText);
         }
       } else if (submode === "highlight") {
-        hunks = await gitHunks(doc.path, doc.text, base);
+        hunks = await gitHunks(doc.path, currentText, base);
       } else if (submode === "full") {
-        lines = await gitFullDiff(doc.path, doc.text, base);
+        lines = await gitFullDiff(doc.path, currentText, base);
       } else {
-        sbs = await gitSideBySide(doc.path, doc.text, base);
+        sbs = await gitSideBySide(doc.path, currentText, base);
       }
     } catch (e) {
       error = humanizeError(e, "read");
@@ -143,6 +151,32 @@
   function applyCustom(e: SubmitEvent) {
     e.preventDefault();
     customBase = customBase.trim() || "HEAD";
+  }
+
+  // "View at this version" — load the file content at the selected revspec
+  // into doc.history so the top-level layout switches to a read-only Preview
+  // of that revision. Walk-list is the file-changed commits (the picker's
+  // default view); if the user picked something not in that list (a branch,
+  // tag, or Custom revspec), we prepend it so they can still see it.
+  async function openHistoryView() {
+    if (!doc.path || isDisk) return;
+    const targetRevspec = base;
+    const targetLabel =
+      bases.find((b) => b.revspec === targetRevspec)?.label ?? targetRevspec;
+    const walk = bases
+      .filter((b) => b.kind === "commit" && b.file_changed)
+      .map((b) => ({ revspec: b.revspec, label: b.label }));
+    let index = walk.findIndex((c) => c.revspec === targetRevspec);
+    if (index < 0) {
+      walk.unshift({ revspec: targetRevspec, label: targetLabel });
+      index = 0;
+    }
+    try {
+      const content = await gitReadAt(doc.path, targetRevspec);
+      doc.enterHistory(targetRevspec, targetLabel, content, walk, index);
+    } catch (e) {
+      error = humanizeError(e, "read");
+    }
   }
 
   const addedSum = $derived(
@@ -186,6 +220,9 @@
         </button>
       </div>
       <label class="base-select">
+        {#if doc.history}
+          <span class="pinned" title={doc.history.revspec}>{doc.history.label}</span>
+        {/if}
         <span class="prefix">vs</span>
         <select
           bind:value={selected}
@@ -256,6 +293,14 @@
           <button type="submit">Apply</button>
         </form>
       {/if}
+      {#if !isDisk && doc.gitAvailable}
+        <button
+          type="button"
+          class="view-at"
+          onclick={openHistoryView}
+          title={i18n.t("history.viewAt")}
+        >{i18n.t("history.viewAt")}</button>
+      {/if}
     </div>
     <div class="meta">
       {#if loading}<span class="loading">…</span>{/if}
@@ -273,7 +318,7 @@
   {:else if error}
     <div class="error">{error}</div>
   {:else if submode === "highlight"}
-    <HighlightView text={doc.text} {hunks} />
+    <HighlightView text={currentText} {hunks} />
   {:else if submode === "full"}
     <FullDiffView {lines} />
   {:else if sbs}
@@ -353,6 +398,19 @@
   .base-select .prefix {
     user-select: none;
   }
+  .base-select .pinned {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.82em;
+    color: var(--mddiff-text);
+    background: var(--mddiff-surface-hi);
+    border: 1px solid var(--mddiff-border-mute);
+    border-radius: 3px;
+    padding: 0.05rem 0.4rem;
+    max-width: 14em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .base-select select {
     font: inherit;
     background: var(--mddiff-bg);
@@ -403,6 +461,19 @@
   }
   .custom-form button:hover {
     background: var(--mddiff-surface-hi);
+  }
+  .view-at {
+    font: inherit;
+    background: transparent;
+    border: 1px solid var(--mddiff-border);
+    border-radius: 4px;
+    padding: 0.22rem 0.6rem;
+    color: var(--mddiff-text);
+    cursor: pointer;
+  }
+  .view-at:hover {
+    background: var(--mddiff-surface-hi);
+    border-color: var(--mddiff-text-mute);
   }
   .meta {
     display: flex;

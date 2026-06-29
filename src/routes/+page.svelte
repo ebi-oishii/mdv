@@ -34,6 +34,7 @@
   import MddiffExportDialog from "$lib/components/MddiffExportDialog.svelte";
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
   import OutlineSidebar from "$lib/components/OutlineSidebar.svelte";
+  import HistoryBanner from "$lib/components/HistoryBanner.svelte";
   import { extractHeadings, activeHeadingIndex } from "$lib/views/outline";
   import { settings, FONT_SIZE_PX } from "$lib/stores/settings.svelte";
   import SourceView from "$lib/views/SourceView.svelte";
@@ -548,7 +549,7 @@
     return i18n.t(`mode.${m}`);
   }
 
-  function setMode(target: Mode) {
+  async function setMode(target: Mode) {
     closeMenu();
     // Refuse Diff when neither Git nor a "Compare with disk" payload is
     // available — the view would have nothing to compare against.
@@ -558,6 +559,27 @@
       doc.pendingDiskCompare == null
     ) {
       return;
+    }
+    // In history view, edit modes (Source/Live/WYSIWYG) are unreachable —
+    // the buffer rendered there would be the live `doc.text`, not the
+    // pinned historical content. Surface this with a confirm dialog so the
+    // user understands the trade-off (restore overwrites their buffer) and
+    // can choose to proceed or stay in history view.
+    if (
+      doc.history &&
+      (target === "source" || target === "live" || target === "wysiwyg")
+    ) {
+      const body = doc.dirty
+        ? i18n.t("history.editLockedDirtyBody")
+        : i18n.t("history.editLockedBody");
+      const ok = await confirm(body, {
+        title: i18n.t("history.editLockedTitle"),
+        kind: "warning",
+        okLabel: i18n.t("history.editLockedOk"),
+        cancelLabel: i18n.t("history.editLockedCancel"),
+      });
+      if (!ok) return;
+      doc.restoreHistory();
     }
     mode = target;
   }
@@ -693,6 +715,21 @@
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+
+  // Esc exits history view. Only attaches the listener while history is
+  // active so we don't intercept Esc in find bars / CodeMirror etc. The
+  // menu's own Escape handler short-circuits earlier (when menuOpen).
+  $effect(() => {
+    if (!doc.history) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (menuOpen) return;
+      e.preventDefault();
+      doc.exitHistory();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 </script>
 
 <svelte:head>
@@ -784,6 +821,18 @@
             <span>{i18n.t("outline.toggle")}</span>
             <kbd>{MOD}{SHIFT}O</kbd>
           </button>
+          {#if doc.history}
+            <button
+              role="menuitem"
+              onclick={() => {
+                doc.exitHistory();
+                closeMenu();
+              }}
+            >
+              <span>{i18n.t("history.exit")}</span>
+              <kbd>Esc</kbd>
+            </button>
+          {/if}
           <div class="sep"></div>
           <button role="menuitem" onclick={open}>
             <span>{i18n.t("menu.open")}</span><kbd>{MOD}O</kbd>
@@ -881,73 +930,92 @@
     </div>
   {/if}
   <main>
-    <div class="workspace" class:split={splitMode}>
-    <section class="pane">
-      {@render titlePill(mode)}
-      {#if mode === "source"}
-        <SourceView
-          text={doc.text}
-          onchange={(t) => doc.setText(t)}
-          onerror={(msg) => (error = msg)}
-        />
-      {:else if mode === "live"}
-        <LivePreviewView
-          text={doc.text}
-          onchange={(t) => doc.setText(t)}
-          onerror={(msg) => (error = msg)}
-        />
-      {:else if mode === "wysiwyg"}
-        <WysiwygView
-          text={doc.text}
-          onchange={(t) => doc.setText(t)}
-          onnormalize={handleNormalize}
-        />
-      {:else if mode === "preview"}
-        <PreviewView text={doc.text} />
+    {#if doc.history}
+      <HistoryBanner />
+    {/if}
+    <div class="main-row">
+      <div class="workspace" class:split={splitMode && !doc.history}>
+      {#if doc.history}
+        <!-- History view: read-only Preview by default, or Diff so the user
+             can compare the pinned version against other revisions. Editing
+             modes (Source/Live/WYSIWYG) are bypassed; they come back the
+             moment the user exits history (state isn't mutated). -->
+        <section class="pane">
+          {#if mode === "diff"}
+            <DiffView />
+          {:else}
+            <PreviewView text={doc.history.content} />
+          {/if}
+        </section>
       {:else}
-        <DiffView />
-      {/if}
-    </section>
-    {#if splitMode}
-      <section class="pane right">
-        {@render titlePill(rightMode)}
-        {#if rightMode === "source"}
-          <SourceView
-            text={doc.text}
-            onchange={(t) => doc.setText(t)}
-            onerror={(msg) => (error = msg)}
-          />
-        {:else if rightMode === "live"}
-          <LivePreviewView
-            text={doc.text}
-            onchange={(t) => doc.setText(t)}
-            onerror={(msg) => (error = msg)}
-          />
-        {:else if rightMode === "wysiwyg"}
-          <WysiwygView
-            text={doc.text}
-            onchange={(t) => doc.setText(t)}
-            onnormalize={() => {}}
-          />
-        {:else if rightMode === "preview"}
-          <PreviewView text={doc.text} />
-        {:else}
-          <DiffView />
+        <section class="pane">
+          {@render titlePill(mode)}
+          {#if mode === "source"}
+            <SourceView
+              text={doc.text}
+              onchange={(t) => doc.setText(t)}
+              onerror={(msg) => (error = msg)}
+            />
+          {:else if mode === "live"}
+            <LivePreviewView
+              text={doc.text}
+              onchange={(t) => doc.setText(t)}
+              onerror={(msg) => (error = msg)}
+            />
+          {:else if mode === "wysiwyg"}
+            <WysiwygView
+              text={doc.text}
+              onchange={(t) => doc.setText(t)}
+              onnormalize={handleNormalize}
+            />
+          {:else if mode === "preview"}
+            <PreviewView text={doc.text} />
+          {:else}
+            <DiffView />
+          {/if}
+        </section>
+        {#if splitMode}
+          <section class="pane right">
+            {@render titlePill(rightMode)}
+            {#if rightMode === "source"}
+              <SourceView
+                text={doc.text}
+                onchange={(t) => doc.setText(t)}
+                onerror={(msg) => (error = msg)}
+              />
+            {:else if rightMode === "live"}
+              <LivePreviewView
+                text={doc.text}
+                onchange={(t) => doc.setText(t)}
+                onerror={(msg) => (error = msg)}
+              />
+            {:else if rightMode === "wysiwyg"}
+              <WysiwygView
+                text={doc.text}
+                onchange={(t) => doc.setText(t)}
+                onnormalize={() => {}}
+              />
+            {:else if rightMode === "preview"}
+              <PreviewView text={doc.text} />
+            {:else}
+              <DiffView />
+            {/if}
+          </section>
         {/if}
-      </section>
-    {/if}
+      {/if}
+      </div>
+      {#if settings.outlineOpen}
+        <OutlineSidebar
+          headings={outlineHeadings}
+          activeIndex={outlineActiveIdx}
+          onJump={(line) => doc.jumpToLine(line)}
+          onClose={() => {
+            settings.outlineOpen = false;
+            settings.persist();
+          }}
+        />
+      {/if}
     </div>
-    {#if settings.outlineOpen}
-      <OutlineSidebar
-        headings={outlineHeadings}
-        activeIndex={outlineActiveIdx}
-        onJump={(line) => doc.jumpToLine(line)}
-        onClose={() => {
-          settings.outlineOpen = false;
-          settings.persist();
-        }}
-      />
-    {/if}
   </main>
 
   {#if mddiffDialogOpen && doc.path}
@@ -1302,12 +1370,21 @@
     background: var(--mddiff-bg);
     color: var(--mddiff-text);
     display: flex;
+    flex-direction: column;
+  }
+  /* Row container for the workspace + outline sidebar. Lives inside main
+     so the HistoryBanner can sit above as a column sibling, then the row
+     fills the rest. */
+  .main-row {
+    flex: 1;
+    min-height: 0;
+    display: flex;
     flex-direction: row;
   }
   /* Inner workspace owns the pane(s). Default is single-pane column; split
      mode flips to row so left/right panes sit side-by-side. The outline
-     sidebar lives as a sibling of .workspace inside main so it docks to the
-     right regardless of split state. */
+     sidebar lives as a sibling of .workspace inside .main-row so it docks to
+     the right regardless of split state. */
   .workspace {
     flex: 1;
     min-width: 0;
