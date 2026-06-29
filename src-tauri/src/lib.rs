@@ -123,6 +123,11 @@ pub fn run() {
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| {
+        // `RunEvent::Opened` is macOS-only — Tauri doesn't expose the variant
+        // on Windows / Linux, so the whole handler is gated. On those
+        // platforms file-open is handled via argv at startup; runtime
+        // "Open With" forwarding would need single-instance plugin (Phase 2).
+        #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Opened { urls } = event {
             use tauri::Emitter;
             use tauri::Manager;
@@ -140,6 +145,11 @@ pub fn run() {
                     let _ = app_handle.emit("file-open", path_str);
                 }
             }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            // Suppress unused-variable warnings on non-mac.
+            let _ = (app_handle, event);
         }
     });
 }
